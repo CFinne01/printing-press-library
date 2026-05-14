@@ -27,6 +27,25 @@ metadata:
 
 # Namecheap — Printing Press CLI
 
+## Prerequisites: Install the CLI
+
+This skill drives the `namecheap-pp-cli` binary. **You must verify the CLI is installed before invoking any command from this skill.** If it is missing, install it first:
+
+1. Install via the Printing Press installer:
+   ```bash
+   npx -y @mvanhorn/printing-press install namecheap --cli-only
+   ```
+2. Verify: `namecheap-pp-cli --version`
+3. Ensure `$GOPATH/bin` (or `$HOME/go/bin`) is on `$PATH`.
+
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.3 or newer):
+
+```bash
+go install github.com/mvanhorn/printing-press-library/library/developer-tools/namecheap/cmd/namecheap-pp-cli@latest
+```
+
+If `--version` reports "command not found" after install, the install step did not put the binary on `$PATH`. Do not proceed with skill commands until verification succeeds.
+
 Curated OpenAPI description for Namecheap's XML API. The real API uses a single
 endpoint (`/xml.response`) with a `Command` query parameter plus Namecheap's
 query-string authentication parameters (`ApiUser`, `ApiKey`, `UserName`, `ClientIp`).
@@ -174,7 +193,7 @@ Explicit flags always win over profile values; profile values win over defaults.
 Parse `$ARGUMENTS`:
 
 1. **Empty, `help`, or `--help`** → show `namecheap-pp-cli --help` output
-2. **Starts with `install`** → ends with `mcp` → MCP installation; otherwise → CLI installation
+2. **Starts with `install`** → ends with `mcp` → MCP installation; otherwise → see Prerequisites above
 3. **Anything else** → Direct Use (execute as CLI command with `--agent`)
 
 ## CLI Installation
