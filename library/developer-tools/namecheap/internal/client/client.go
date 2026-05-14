@@ -33,6 +33,8 @@ type Client struct {
 	NoCache    bool
 	cacheDir   string
 	limiter    *cliutil.AdaptiveLimiter
+	// PATCH(namecheap-client-ip-cache): cache auto-detected public IP per client to avoid per-request ipify calls.
+	detectedClientIP string
 }
 
 // APIError carries HTTP status information for structured exit codes.
@@ -258,6 +260,9 @@ func (c *Client) do(method, path string, params map[string]string, body any, hea
 		if converted, ok := convertNamecheapXMLToJSON(respBody); ok {
 			respBody = converted
 		}
+		if namecheapErr := detectNamecheapAPIError(method, path, respBody); namecheapErr != nil {
+			return nil, resp.StatusCode, namecheapErr
+		}
 
 		// Success
 		if resp.StatusCode < 400 {
@@ -320,7 +325,12 @@ func (c *Client) dryRun(method, targetURL, path string, params map[string]string
 			if queryPrinted {
 				sep = "&"
 			}
-			fmt.Fprintf(os.Stderr, "  %s%s=%s\n", sep, k, params[k])
+			v := params[k]
+			// PATCH(namecheap-dry-run-mask): Namecheap API credentials travel as query params, so mask them in previews.
+			if isSensitiveQueryParam(k) {
+				v = maskToken(v)
+			}
+			fmt.Fprintf(os.Stderr, "  %s%s=%s\n", sep, k, v)
 			queryPrinted = true
 		}
 	}
@@ -475,9 +485,17 @@ func (c *Client) prepareNamecheapRequest(path string, params map[string]string) 
 	if strings.TrimSpace(c.Config.ClientIP) != "" {
 		params["ClientIp"] = strings.TrimSpace(c.Config.ClientIP)
 	} else {
-		params["ClientIp"] = detectClientIP(c.HTTPClient)
+		// PATCH(namecheap-client-ip-cache): resolve once per Client instead of hitting ipify on every request.
+		if c.detectedClientIP == "" {
+			c.detectedClientIP = detectClientIP(c.HTTPClient)
+		}
+		params["ClientIp"] = c.detectedClientIP
 	}
 	return "/xml.response", params, nil
+}
+
+func isSensitiveQueryParam(key string) bool {
+	return strings.EqualFold(key, "ApiKey") || strings.EqualFold(key, "APIKey")
 }
 
 var namecheapCommandByPath = map[string]string{
@@ -534,6 +552,35 @@ type xmlNode struct {
 	Attrs   []xml.Attr `xml:",any,attr"`
 	Content string     `xml:",chardata"`
 	Nodes   []xmlNode  `xml:",any"`
+}
+
+// NamecheapAPIError carries Namecheap XML envelope errors that arrive with HTTP 200.
+type NamecheapAPIError struct {
+	Method string
+	Path   string
+	Status string
+	Body   string
+}
+
+func (e *NamecheapAPIError) Error() string {
+	return fmt.Sprintf("%s %s returned Namecheap API status %s: %s", e.Method, e.Path, e.Status, e.Body)
+}
+
+func detectNamecheapAPIError(method, path string, body []byte) error {
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil
+	}
+	api, ok := decoded["ApiResponse"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	status, _ := api["Status"].(string)
+	if !strings.EqualFold(status, "ERROR") {
+		return nil
+	}
+	// PATCH(namecheap-api-error-status): Namecheap reports auth/API failures in the XML envelope, not HTTP status.
+	return &NamecheapAPIError{Method: method, Path: path, Status: status, Body: truncateBody(body)}
 }
 
 func convertNamecheapXMLToJSON(body []byte) ([]byte, bool) {

@@ -176,9 +176,13 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 					} else {
 						_, authErr := c.Get("/xml.response/users/get-balances", nil)
 						var authAPIErr *client.APIError
+						var namecheapAPIErr *client.NamecheapAPIError
 						switch {
 						case authErr == nil:
 							report["credentials"] = "valid"
+						case errors.As(authErr, &namecheapAPIErr):
+							// PATCH(namecheap-api-error-status): invalid Namecheap credentials arrive as XML Status=ERROR with HTTP 200.
+							report["credentials"] = "invalid or IP not whitelisted (Namecheap API Status=ERROR)"
 						case errors.As(authErr, &authAPIErr):
 							if authAPIErr.StatusCode == 401 || authAPIErr.StatusCode == 403 {
 								report["credentials"] = fmt.Sprintf("invalid or IP not whitelisted (HTTP %d from Namecheap)", authAPIErr.StatusCode)

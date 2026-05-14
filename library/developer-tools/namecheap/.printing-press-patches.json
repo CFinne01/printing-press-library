@@ -40,6 +40,48 @@
         "internal/mcp/tools.go"
       ],
       "validated_outcome": "TestAuthStatusHintUsesNamecheapAPIKeyEnv verifies auth status hints use NAMECHEAP_API_KEY and omit NAMECHEAP_API_KEY_QUERY."
+    },
+    {
+      "id": "namecheap-dry-run-mask",
+      "summary": "Mask Namecheap ApiKey query parameters in dry-run output.",
+      "reason": "Namecheap credentials are injected into query params, so generic bearer-header masking did not protect --dry-run previews.",
+      "files": [
+        "internal/client/client.go",
+        "internal/client/review_regression_test.go"
+      ],
+      "validated_outcome": "TestDryRunMasksNamecheapAPIKeyParam verifies raw API keys are absent and masked values are present."
+    },
+    {
+      "id": "namecheap-set-token-api-key",
+      "summary": "Persist auth set-token values to the Namecheap api_key config field and clear query-auth credentials on logout.",
+      "reason": "The generated OAuth-style access_token field is not used by Namecheap request preparation; persisted keys must land in api_key.",
+      "files": [
+        "internal/config/config.go",
+        "internal/cli/auth.go",
+        "internal/cli/auth_test.go"
+      ],
+      "validated_outcome": "TestAuthSetTokenPersistsNamecheapAPIKey verifies auth set-token writes api_key and leaves access_token empty."
+    },
+    {
+      "id": "namecheap-client-ip-cache",
+      "summary": "Cache the auto-detected public ClientIp once per Client instance.",
+      "reason": "Repeated calls to api.ipify.org add latency and make commands fragile when NAMECHEAP_CLIENT_IP is not explicitly configured.",
+      "files": [
+        "internal/client/client.go",
+        "internal/client/review_regression_test.go"
+      ],
+      "validated_outcome": "TestPrepareNamecheapRequestCachesDetectedClientIP verifies two prepared requests perform one ipify lookup."
+    },
+    {
+      "id": "namecheap-api-error-status",
+      "summary": "Treat Namecheap XML ApiResponse Status=ERROR envelopes as command errors.",
+      "reason": "Namecheap returns HTTP 200 for invalid credentials and other API failures, so the converted JSON body must be inspected before reporting success.",
+      "files": [
+        "internal/client/client.go",
+        "internal/client/review_regression_test.go",
+        "internal/cli/doctor.go"
+      ],
+      "validated_outcome": "TestNamecheapXMLStatusErrorReturnsError verifies Status=ERROR converts to *NamecheapAPIError."
     }
   ]
 }

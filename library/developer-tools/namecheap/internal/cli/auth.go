@@ -94,8 +94,8 @@ func newAuthSetTokenCmd(flags *rootFlags) *cobra.Command {
 			// token bytes through scripted dogfood that captures stderr.
 			cfg.AuthHeaderVal = ""
 
-			// Save the token directly via the config's save mechanism
-			if err := cfg.SaveTokens("", "", args[0], "", cfg.TokenExpiry); err != nil {
+			// PATCH(namecheap-set-token-api-key): persist Namecheap API keys in the api_key field used by request prep.
+			if err := cfg.SaveAPIKey(args[0]); err != nil {
 				return configErr(fmt.Errorf("saving token: %w", err))
 			}
 

@@ -99,7 +99,21 @@ func (c *Config) SaveTokens(clientID, clientSecret, accessToken, refreshToken st
 	c.TokenExpiry = expiry
 	return c.save()
 }
+func (c *Config) SaveAPIKey(apiKey string) error {
+	// PATCH(namecheap-set-token-api-key): Namecheap uses the api_key TOML field, not access_token.
+	c.APIKey = apiKey
+	c.AuthHeaderVal = ""
+	c.AccessToken = ""
+	c.RefreshToken = ""
+	c.TokenExpiry = time.Time{}
+	return c.save()
+}
 func (c *Config) ClearTokens() error {
+	// PATCH(namecheap-set-token-api-key): clear persisted Namecheap query-auth credentials too.
+	c.APIUser = ""
+	c.APIKey = ""
+	c.ClientIP = ""
+	c.AuthHeaderVal = ""
 	c.AccessToken = ""
 	c.RefreshToken = ""
 	c.TokenExpiry = time.Time{}
