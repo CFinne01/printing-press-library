@@ -19,6 +19,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha1"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -171,9 +172,19 @@ func DecryptedChromeCookies(host string) (map[string]string, error) {
 		if err != nil {
 			continue
 		}
-		// v10/v11 prepend a 32-byte SHA256(host_key) for integrity.
-		if len(pt) > 32 {
-			pt = pt[32:]
+		// PATCH(host-key-binding-detection): only strip the 32-byte
+		// SHA-256(host_key) prefix when it actually matches the
+		// computed hash. The previous unconditional strip discarded
+		// the first 32 chars of every cookie value (which is every
+		// JWT-sized session token), so RefreshFromChromeCookies always
+		// sent a corrupted token. The prefix is added by Chrome's
+		// M120+ cookie host-binding feature and is absent on older
+		// Chrome versions (greptile P1).
+		if len(pt) >= 32 {
+			sum := sha256.Sum256([]byte(host))
+			if bytes.Equal(pt[:32], sum[:]) {
+				pt = pt[32:]
+			}
 		}
 		out[name] = string(pt)
 	}
