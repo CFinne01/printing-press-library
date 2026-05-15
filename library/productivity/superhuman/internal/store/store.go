@@ -365,7 +365,14 @@ func (s *Store) migrate(ctx context.Context) error {
 			"internal_date" INTEGER
 		)`,
 	}
-	migrations = append(migrations, schemaV3MigrationSQL()...)
+	// PATCH(greptile-migration-bulk-rebuild): the v3 schema statements are
+	// split between an idempotent set (CREATE TABLE/INDEX/TRIGGER IF NOT
+	// EXISTS, safe on every Open) and a one-shot rebuild set (DELETE +
+	// INSERT INTO label_index / messages_fts from messages). The rebuild
+	// is appended later inside the migration lock, gated on a real
+	// pre-v3 -> v3 transition, so existing v3 databases don't repay
+	// O(n-messages) blocking work on every CLI command.
+	migrations = append(migrations, schemaV3IdempotentSQL()...)
 	migrations = append(migrations, []string{
 		`CREATE TABLE IF NOT EXISTS "reminders" (
 			"id" TEXT PRIMARY KEY,
@@ -442,6 +449,20 @@ func (s *Store) migrate(ctx context.Context) error {
 		for _, m := range migrations {
 			if _, err := conn.ExecContext(ctx, m); err != nil {
 				return fmt.Errorf("migration failed: %w", err)
+			}
+		}
+		// PATCH(greptile-migration-bulk-rebuild): run the v3 rebuild only
+		// on a true pre-v3 -> v3 transition. The idempotent CREATE TABLE
+		// IF NOT EXISTS / DROP TRIGGER + CREATE TRIGGER statements ran
+		// above unconditionally and are cheap; the DELETE + INSERT INTO
+		// label_index / messages_fts rebuild here is O(n-messages) and
+		// is only needed when those tables don't yet have data populated
+		// from the v3 triggers.
+		if current < 3 {
+			for _, m := range schemaV3RebuildSQL() {
+				if _, err := conn.ExecContext(ctx, m); err != nil {
+					return fmt.Errorf("v3 rebuild failed: %w", err)
+				}
 			}
 		}
 		// Stamp the schema version. On a fresh DB this writes the current

@@ -49,8 +49,18 @@ var gmailThreadListTypes = map[string]threadListGmailSpec{
 	"spam":      {labelIDs: []string{"SPAM"}},
 	"trash":     {labelIDs: []string{"TRASH"}},
 	"important": {labelIDs: []string{"IMPORTANT"}},
-	"done":      {query: "in:anywhere -label:inbox"},
-	"archived":  {query: "in:anywhere -label:inbox"},
+	// PATCH(greptile-archived-vs-done-divergence): keep these two queries
+	// aligned with bootstrap.go's bootstrapFolderQueries.
+	//   - "done" is Superhuman's UI bucket for everything that left INBOX
+	//     for any reason (replied, archived, dismissed). Gmail expresses
+	//     it as `in:anywhere -label:inbox`.
+	//   - "archived" is the user-facing filter for "I moved this out of
+	//     INBOX without it being SENT, SPAM, or TRASH" — a strict subset
+	//     of "done". The narrower query matches what the bootstrap path
+	//     pulls into the local store, so threads list --type=archived
+	//     never returns rows that bootstrap won't have surfaced.
+	"done":     {query: "in:anywhere -label:inbox"},
+	"archived": {query: "in:anywhere -label:inbox -label:sent -label:spam -label:trash"},
 }
 
 func newThreadsListCmd(flags *rootFlags) *cobra.Command {

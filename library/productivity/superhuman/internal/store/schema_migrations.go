@@ -3,7 +3,12 @@
 
 package store
 
-func schemaV3MigrationSQL() []string {
+// schemaV3IdempotentSQL is the set of v3 schema statements safe to run on
+// every Open. CREATE TABLE / CREATE INDEX / CREATE VIRTUAL TABLE all use
+// IF NOT EXISTS so they no-op on subsequent opens. Triggers are dropped
+// and recreated so trigger-body changes between binary versions take
+// effect, which is cheap (no table walk).
+func schemaV3IdempotentSQL() []string {
 	return []string{
 		`CREATE INDEX IF NOT EXISTS "idx_messages_account_email" ON "messages"("account_email")`,
 		`CREATE INDEX IF NOT EXISTS "idx_messages_thread_id" ON "messages"("thread_id")`,
@@ -57,6 +62,24 @@ func schemaV3MigrationSQL() []string {
 			DELETE FROM "label_index" WHERE "message_id" = old."id";
 			DELETE FROM "messages_fts" WHERE "message_id" = old."id";
 		END`,
+	}
+}
+
+// schemaV3RebuildSQL backfills label_index and messages_fts from existing
+// messages rows. Only safe to run when the schema is being upgraded from
+// pre-v3 to v3, because it does O(n-messages) work inside the migration
+// transaction and blocks writes. After the v3 rebuild has run once, the
+// triggers from schemaV3IdempotentSQL keep both tables current on every
+// write.
+//
+// PATCH(greptile-migration-bulk-rebuild): the prior implementation ran
+// these DELETE+INSERT statements on every Open via the migration loop.
+// Combined with auto-refresh on every CLI command, every invocation paid
+// O(n-messages) blocking work even when the schema was already at v3.
+// Gating the rebuild on `current < 3` keeps the cost paid once, at the
+// version bump that needs it.
+func schemaV3RebuildSQL() []string {
+	return []string{
 		`DELETE FROM "label_index"`,
 		`INSERT OR IGNORE INTO "label_index"("message_id", "account_email", "label_id")
 			SELECT m."id", COALESCE(m."account_email", ''), labels.value
@@ -65,4 +88,15 @@ func schemaV3MigrationSQL() []string {
 		`INSERT INTO "messages_fts"("message_id", "subject", "body_plain", "from", "to", "cc", "snippet")
 			SELECT "id", "subject", "body_plain", "from", "to", "cc", "snippet" FROM "messages"`,
 	}
+}
+
+// schemaV3MigrationSQL is kept as a compatibility shim that returns the
+// union of idempotent + rebuild statements. Direct callers should prefer
+// the two split helpers so the bulk rebuild can be gated on a real
+// version transition. Will be removed once the only call site (store.go)
+// is migrated to the version-gated helpers.
+func schemaV3MigrationSQL() []string {
+	out := schemaV3IdempotentSQL()
+	out = append(out, schemaV3RebuildSQL()...)
+	return out
 }

@@ -195,3 +195,30 @@ func TestBootstrapInvalidFolderUsageError(t *testing.T) {
 		t.Fatalf("error missing valid folders: %v", err)
 	}
 }
+
+// TestMaxHistoryID pins the greptile-bootstrap-history-checkpoint helper.
+// Gmail's historyId is a stringified uint64, so a lex comparison would put
+// "9" above "100". maxHistoryID must compare numerically and tolerate empty
+// inputs (so first-folder accumulation works).
+func TestMaxHistoryID(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b string
+		want string
+	}{
+		{"numeric a > b", "100", "9", "100"},
+		{"numeric b > a", "9", "100", "100"},
+		{"equal", "42", "42", "42"},
+		{"empty a", "", "5", "5"},
+		{"empty b", "5", "", "5"},
+		{"both empty", "", "", ""},
+		{"large values cross 32 bit", "5000000000", "4294967296", "5000000000"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := maxHistoryID(tc.a, tc.b); got != tc.want {
+				t.Fatalf("maxHistoryID(%q, %q) = %q, want %q", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}

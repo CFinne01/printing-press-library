@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
@@ -161,9 +162,11 @@ func runBootstrap(cmd *cobra.Command, flags *rootFlags, opts bootstrapOptions) e
 	var latestHistory string
 	for _, folder := range opts.Folders {
 		count, historyID, err := bootstrapFolder(cmd.Context(), cmd, flags, gc, db, acct.Email, folder, opts.PerFolder)
-		if historyID != "" {
-			latestHistory = historyID
-		}
+		// PATCH(greptile-bootstrap-history-checkpoint): roll up the MAX
+		// historyID across all folders, not the last-folder's. Sequential
+		// assignment would have set latestHistory to whichever folder ran
+		// last, which is rarely the folder with the highest historyID.
+		latestHistory = maxHistoryID(latestHistory, historyID)
 		if saveErr := db.SaveHistoryState(cmd.Context(), acct.Email, latestHistory, time.Now(), started); saveErr != nil && err == nil {
 			err = saveErr
 		}
@@ -214,9 +217,15 @@ func bootstrapFolder(ctx context.Context, cmd *cobra.Command, flags *rootFlags, 
 				return fetched, latestHistory, err
 			}
 			batch = append(batch, storedMessageFromGmail(accountEmail, msg))
-			if msg.HistoryID != "" {
-				latestHistory = msg.HistoryID
-			}
+			// PATCH(greptile-bootstrap-history-checkpoint): take the MAXIMUM
+			// historyID across all messages, not the LAST one written. Gmail
+			// returns messages newest-first, so the last assignment landed on
+			// the oldest historyID, and the subsequent watch/auto-refresh
+			// would replay a wide history window before reaching the real
+			// new state. maxHistoryID handles the stringified-uint64
+			// comparison explicitly so callers don't accidentally compare
+			// lexically (where "100" < "9").
+			latestHistory = maxHistoryID(latestHistory, msg.HistoryID)
 		}
 		stored, err := db.UpsertGmailMessages(ctx, batch)
 		if err != nil {
@@ -287,6 +296,39 @@ func emitBootstrapProgress(cmd *cobra.Command, flags *rootFlags, folder string, 
 
 func minInt(a, b int) int {
 	if b <= 0 || a < b {
+		return a
+	}
+	return b
+}
+
+// maxHistoryID returns the numerically greater of two Gmail historyId
+// values. Gmail's historyId is a stringified uint64 (currently fits in 32
+// bits but the API contract is the larger type), so a lexicographic
+// comparison would put "9" above "100". big.Int.Cmp handles the full
+// range with no overflow concern.
+//
+// Either argument may be empty: an empty string sorts below any populated
+// value, which is what bootstrap callers want when accumulating a
+// checkpoint from a freshly-zeroed local state.
+func maxHistoryID(a, b string) string {
+	if a == "" {
+		return b
+	}
+	if b == "" {
+		return a
+	}
+	ai, aok := new(big.Int).SetString(a, 10)
+	bi, bok := new(big.Int).SetString(b, 10)
+	if !aok || !bok {
+		// Fall back to lex comparison if either side isn't a clean
+		// decimal integer. This branch should be unreachable in
+		// practice but keeps the function safe under unexpected input.
+		if a >= b {
+			return a
+		}
+		return b
+	}
+	if ai.Cmp(bi) >= 0 {
 		return a
 	}
 	return b

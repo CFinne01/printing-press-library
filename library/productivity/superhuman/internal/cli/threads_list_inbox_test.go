@@ -129,7 +129,11 @@ func TestThreadsListGmailFolderTypes(t *testing.T) {
 		{listType: "spam", queryKey: "labelIds", want: "SPAM"},
 		{listType: "trash", queryKey: "labelIds", want: "TRASH"},
 		{listType: "important", queryKey: "labelIds", want: "IMPORTANT"},
-		{listType: "archived", queryKey: "q", want: "in:anywhere -label:inbox"},
+		// archived is the strict subset (-sent -spam -trash); done is the
+		// broader bucket that includes them. See the PATCH comment on
+		// gmailThreadListTypes in threads_list.go for the rationale and
+		// the matching pair in bootstrap.go's bootstrapFolderQueries.
+		{listType: "archived", queryKey: "q", want: "in:anywhere -label:inbox -label:sent -label:spam -label:trash"},
 		{listType: "done", queryKey: "q", want: "in:anywhere -label:inbox"},
 	}
 	for _, tc := range cases {
