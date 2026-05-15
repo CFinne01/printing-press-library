@@ -5,8 +5,8 @@
 // That body shape is wrong — Superhuman's /messages/send expects the full
 // `outgoing_message` envelope. The send pipeline lives in send.go.
 // PATCH(2026-05-14-003 U4-U8): `messages` is repurposed as a real namespace
-// containing per-message read commands (get, get-attachment, read-status,
-// query). The bare `messages` invocation prints help and points users at
+// containing per-message read commands (list, get, get-attachment,
+// read-status, query). The bare `messages` invocation prints help and points users at
 // `send` for outgoing email.
 
 package cli
@@ -18,15 +18,16 @@ import (
 // newMessagesPromotedCmd is the parent of the v1.1 messages.* read commands.
 // MCP-parity tools that operate on individual messages or the inbox sit
 // here: `messages get`, `messages get-attachment`, `messages read-status`,
-// `messages query`. Sending an email continues to live at the top-level
+// `messages list`, `messages query`. Sending an email continues to live at the top-level
 // `send` command (the 3-step Superhuman pipeline), not under `messages`.
 func newMessagesPromotedCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "messages",
-		Short: "Read messages (get, get-attachment, read-status, query). For sending, use 'send'.",
+		Short: "Read messages (list, get, get-attachment, read-status, query). For sending, use 'send'.",
 		Long: `Per-message read commands. Subcommands:
 
   get <id>                  Fetch one message (body, headers, attachment metadata)
+  list --query <q>          Gmail search passthrough
   get-attachment <m> <a>    Download an attachment by id
   read-status <thread-id>   Who opened a thread and when
   query "<text>"            Semantic email search
@@ -38,6 +39,7 @@ Superhuman backend pipeline lives there, not under 'messages').`,
 		},
 	}
 	cmd.AddCommand(newMessagesGetCmd(flags))
+	cmd.AddCommand(newMessagesListCmd(flags))
 	cmd.AddCommand(newMessagesGetAttachmentCmd(flags))
 	cmd.AddCommand(newMessagesReadStatusCmd(flags))
 	cmd.AddCommand(newMessagesQueryCmd(flags))

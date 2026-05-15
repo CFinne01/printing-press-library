@@ -130,6 +130,12 @@ func (c *Client) ListMessages(ctx context.Context, labelIDs []string, query stri
 	}, nil
 }
 
+// ListWithQuery is the Gmail-search passthrough convenience used by
+// `messages list --query`.
+func (c *Client) ListWithQuery(ctx context.Context, query string, pageSize int, pageToken string) (*ListMessagesResult, error) {
+	return c.ListMessages(ctx, nil, query, pageSize, pageToken)
+}
+
 // Header is one entry from a Gmail message's parsed headers list.
 type Header struct {
 	Name  string `json:"name"`
