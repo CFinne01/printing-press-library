@@ -7,6 +7,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestListThreadsFilteredByParticipantsAndLabel(t *testing.T) {
@@ -154,5 +155,49 @@ func TestFilterThreadsByLabelsUsesLabelIndex(t *testing.T) {
 	}
 	if !(got["tBoth"] && got["tSentOnly"] && len(got) == 2) {
 		t.Fatalf("SENT result = %v, want exactly {tBoth, tSentOnly}", got)
+	}
+}
+
+// TestListThreadsByParticipantsHonorsSince pins the
+// greptile-since-forwarding patch. The prior implementation accepted a
+// `since time.Time` argument and silently discarded it; this test
+// reproduces the bug shape (one message before the window, one inside)
+// and asserts only the inside-window thread is returned.
+func TestListThreadsByParticipantsHonorsSince(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	// Two threads each with one message; tOld is before the cutoff,
+	// tFresh is after. internal_date is unix millis.
+	cutoff := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	older := cutoff.Add(-72 * time.Hour).UnixMilli()
+	newer := cutoff.Add(72 * time.Hour).UnixMilli()
+	if _, err := s.UpsertGmailMessages(ctx, []StoredMessage{
+		{ID: "mOld", ThreadID: "tOld", AccountEmail: "user@example.com", From: "alice@example.com", To: "user@example.com", InternalDate: older},
+		{ID: "mFresh", ThreadID: "tFresh", AccountEmail: "user@example.com", From: "alice@example.com", To: "user@example.com", InternalDate: newer},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	got, err := s.ListThreadsByParticipants(ctx, []string{"alice@example.com"}, cutoff)
+	if err != nil {
+		t.Fatalf("ListThreadsByParticipants: %v", err)
+	}
+	if len(got) != 1 || got[0].ThreadID != "tFresh" {
+		t.Fatalf("ListThreadsByParticipants(since=%v) = %+v, want [tFresh]", cutoff, got)
+	}
+
+	// Sanity: zero Since lets both through (no regression on the
+	// no-bound case).
+	gotAll, err := s.ListThreadsByParticipants(ctx, []string{"alice@example.com"}, time.Time{})
+	if err != nil {
+		t.Fatalf("ListThreadsByParticipants no-since: %v", err)
+	}
+	if len(gotAll) != 2 {
+		t.Fatalf("no-since result = %+v, want both threads", gotAll)
 	}
 }

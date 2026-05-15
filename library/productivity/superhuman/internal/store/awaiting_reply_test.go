@@ -10,6 +10,60 @@ import (
 	"time"
 )
 
+// TestListAwaitingReplyExcludesEmptyFromUnderExternalOnly pins the
+// greptile-awaiting-reply-empty-from patch. Messages stored via
+// ApplyHistoryDelta carry empty from/subject until the next bootstrap
+// or messages.get backfills them. Under --external-only those stub
+// rows must NOT be returned: emailDomain("") returns "" which never
+// equals the account domain, so a strict domain-mismatch check would
+// silently include them. Empty-from rows are classified as "unknown
+// origin" and skipped until enrichment lands.
+func TestListAwaitingReplyExcludesEmptyFromUnderExternalOnly(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	// m1 is a real external message (should appear under --external-only).
+	// mStub is a history-delta stub with empty From — must NOT appear
+	// because we can't classify its origin.
+	if _, err := s.UpsertGmailMessages(context.Background(), []StoredMessage{
+		{ID: "m1", ThreadID: "t1", AccountEmail: "user@example.com", LabelIDs: []string{"INBOX"}, From: "alice@external.example", To: "user@example.com", Subject: "real external", InternalDate: now.Add(-5 * time.Hour).UnixMilli()},
+		{ID: "mStub", ThreadID: "tStub", AccountEmail: "user@example.com", LabelIDs: []string{"INBOX"}, From: "", To: "", Subject: "", InternalDate: now.Add(-5 * time.Hour).UnixMilli()},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	threads, err := s.ListAwaitingReply(context.Background(), AwaitingReplyFilter{
+		AccountEmail: "user@example.com",
+		Since:        now.Add(-24 * time.Hour),
+		MinAge:       4 * time.Hour,
+		ExternalOnly: true,
+		Now:          now,
+	})
+	if err != nil {
+		t.Fatalf("ListAwaitingReply: %v", err)
+	}
+	if len(threads) != 1 || threads[0].ThreadID != "t1" {
+		t.Fatalf("threads = %+v, want only t1 (mStub must be excluded under --external-only)", threads)
+	}
+
+	// Sanity: WITHOUT --external-only, both rows survive (stub from
+	// history delta is still tracked, just not filtered).
+	allThreads, err := s.ListAwaitingReply(context.Background(), AwaitingReplyFilter{
+		AccountEmail: "user@example.com",
+		Since:        now.Add(-24 * time.Hour),
+		MinAge:       4 * time.Hour,
+		Now:          now,
+	})
+	if err != nil {
+		t.Fatalf("ListAwaitingReply unbounded: %v", err)
+	}
+	if len(allThreads) != 2 {
+		t.Fatalf("unbounded threads = %+v, want both rows", allThreads)
+	}
+}
+
 func TestListAwaitingReply(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
 	if err != nil {

@@ -90,8 +90,26 @@ func (s *Store) ListAwaitingReply(ctx context.Context, filter AwaitingReplyFilte
 		if strings.EqualFold(emailOnly(item.From), filter.AccountEmail) {
 			continue
 		}
-		if filter.ExternalOnly && accountDomain != "" && emailDomain(item.From) == accountDomain {
-			continue
+		// PATCH(greptile-awaiting-reply-empty-from): messages stored via
+		// ApplyHistoryDelta carry only the minimal stub fields Gmail's
+		// history.list returns (id, thread_id, label_ids, history_id) —
+		// from/subject/body remain empty until a subsequent
+		// messages.get backfills them. emailDomain("") returns "" which
+		// never equals accountDomain, so a strict `from-domain !=
+		// account-domain` check would WRONGLY include those rows under
+		// --external-only. We classify empty-from rows as "unknown
+		// origin" and exclude them from --external-only results until
+		// the row is enriched. The cost is a transient false negative
+		// (a real external message dropped from awaiting-reply for one
+		// poll cycle); the savings is no transient false positive (an
+		// own-domain message wrongly flagged as awaiting your reply).
+		if filter.ExternalOnly {
+			if item.From == "" {
+				continue
+			}
+			if accountDomain != "" && emailDomain(item.From) == accountDomain {
+				continue
+			}
 		}
 		labels := latestLabels[threadID]
 		if !filter.IncludeArchived && !labelMatch(labels, "INBOX") {

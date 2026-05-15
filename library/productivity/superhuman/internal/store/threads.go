@@ -18,7 +18,10 @@ type ThreadFilter struct {
 	Label        string
 	Participants []string
 	ThreadIDs    []string
-	Limit        int
+	// Since bounds the result set to threads whose latest message
+	// landed at or after this point. Zero value disables the filter.
+	Since time.Time
+	Limit int
 }
 
 type ThreadSummary struct {
@@ -32,13 +35,17 @@ type ThreadSummary struct {
 
 // ListThreadsByParticipants is the focused U11 helper: it returns threads
 // involving any of the supplied participant emails since the optional time.
+//
+// PATCH(greptile-since-forwarding): the prior implementation accepted
+// `since` but never forwarded it to ListThreadsFiltered, so callers
+// always got the full history regardless of the time window they
+// requested. ThreadFilter now carries a Since field and the filter is
+// applied post-aggregation against thread.LastMessageAt.
 func (s *Store) ListThreadsByParticipants(ctx context.Context, emails []string, since time.Time) ([]ThreadSummary, error) {
-	filter := ThreadFilter{Participants: emails}
-	if !since.IsZero() {
-		// The broader ListThreadsFiltered helper currently has no since field;
-		// keep this public helper simple and explicit for tests/users that need it.
-	}
-	return s.ListThreadsFiltered(ctx, filter)
+	return s.ListThreadsFiltered(ctx, ThreadFilter{
+		Participants: emails,
+		Since:        since,
+	})
 }
 
 func (s *Store) ListThreadsFiltered(ctx context.Context, filter ThreadFilter) ([]ThreadSummary, error) {
@@ -95,6 +102,21 @@ func (s *Store) ListThreadsFiltered(ctx context.Context, filter ThreadFilter) ([
 		out = append(out, *summary)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].LastMessageAt > out[j].LastMessageAt })
+
+	// PATCH(greptile-since-forwarding): apply Since filter before label
+	// filter + limit truncation, so a since-bounded query doesn't waste
+	// the limit budget on threads that fall outside the window. messages.
+	// internal_date is unix millis (see UpsertGmailMessages).
+	if !filter.Since.IsZero() {
+		sinceMillis := filter.Since.UnixMilli()
+		bounded := out[:0]
+		for _, t := range out {
+			if t.LastMessageAt >= sinceMillis {
+				bounded = append(bounded, t)
+			}
+		}
+		out = bounded
+	}
 
 	// PATCH(greptile-label-filter-truncation): apply label filtering BEFORE
 	// limit truncation. The prior order truncated to N first and then filtered,
