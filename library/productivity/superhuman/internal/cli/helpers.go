@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/client"
+	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/cliutil"
+	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"io"
@@ -16,8 +19,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/client"
-	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/cliutil"
 	"text/tabwriter"
 	"time"
 	"unicode"
@@ -707,11 +708,32 @@ func printOutputWithFlags(w io.Writer, data json.RawMessage, flags *rootFlags) e
 	if flags.quiet {
 		return nil
 	}
+	if flags.envelopeMode == "full" {
+		return WriteEnvelope(w, data, envelopeMetaFromFlags(flags))
+	}
 	// --csv: render as CSV
 	if flags.csv {
 		return printCSV(w, data)
 	}
 	return printOutput(w, data, flags.asJSON)
+}
+
+func envelopeMetaFromFlags(flags *rootFlags) types.EnvelopeMeta {
+	meta := types.EnvelopeMeta{}
+	if flags == nil || flags.freshnessMeta == nil {
+		return meta
+	}
+	switch m := flags.freshnessMeta.(type) {
+	case types.EnvelopeMeta:
+		for k, v := range m {
+			meta[k] = v
+		}
+	case map[string]any:
+		for k, v := range m {
+			meta[k] = v
+		}
+	}
+	return meta
 }
 
 // extractResponseData unwraps common API response envelopes for display.

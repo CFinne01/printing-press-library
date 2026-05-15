@@ -5,12 +5,16 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/types"
 )
 
 // DeliverSink describes where command output should be routed when
@@ -68,6 +72,20 @@ func Deliver(sink DeliverSink, body []byte, compact bool) error {
 	default:
 		return fmt.Errorf("unsupported deliver sink %q", sink.Scheme)
 	}
+}
+
+// WriteEnvelope writes the opt-in freshness envelope around an already
+// marshaled command response.
+func WriteEnvelope(out io.Writer, data json.RawMessage, meta types.EnvelopeMeta) error {
+	if meta == nil {
+		meta = types.EnvelopeMeta{}
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(types.Envelope{
+		Meta:    meta,
+		Results: data,
+	})
 }
 
 func deliverFile(path string, body []byte) error {
