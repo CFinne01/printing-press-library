@@ -24,9 +24,22 @@ type ThreadRef struct {
 // is empty when there are no more pages; callers use it as the page-token
 // for the next call.
 type ListInboxResult struct {
-	Threads             []ThreadRef
-	NextPageToken       string
-	ResultSizeEstimate  int
+	Threads            []ThreadRef
+	NextPageToken      string
+	ResultSizeEstimate int
+}
+
+// MessageRef is the minimal handle users.messages.list returns per message.
+type MessageRef struct {
+	ID       string `json:"id"`
+	ThreadID string `json:"threadId"`
+}
+
+// ListMessagesResult is the typed response from users.messages.list.
+type ListMessagesResult struct {
+	Messages           []MessageRef
+	NextPageToken      string
+	ResultSizeEstimate int
 }
 
 // ListInboxThreads calls Gmail's users.threads.list endpoint scoped to the
@@ -66,6 +79,44 @@ func (c *Client) ListInboxThreads(ctx context.Context, pageSize int, pageToken s
 	}, nil
 }
 
+// ListMessages calls Gmail's users.messages.list endpoint with optional label
+// and search-query filters. pageSize maps to Gmail maxResults and is capped at
+// Gmail's documented 500-result limit.
+func (c *Client) ListMessages(ctx context.Context, labelIDs []string, query string, pageSize int, pageToken string) (*ListMessagesResult, error) {
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	if pageSize > 500 {
+		pageSize = 500
+	}
+	q := url.Values{}
+	q.Set("maxResults", strconv.Itoa(pageSize))
+	for _, labelID := range labelIDs {
+		if labelID != "" {
+			q.Add("labelIds", labelID)
+		}
+	}
+	if query != "" {
+		q.Set("q", query)
+	}
+	if pageToken != "" {
+		q.Set("pageToken", pageToken)
+	}
+	var raw struct {
+		Messages           []MessageRef `json:"messages"`
+		NextPageToken      string       `json:"nextPageToken"`
+		ResultSizeEstimate int          `json:"resultSizeEstimate"`
+	}
+	if err := c.GetJSON(ctx, "/users/me/messages?"+q.Encode(), &raw); err != nil {
+		return nil, err
+	}
+	return &ListMessagesResult{
+		Messages:           raw.Messages,
+		NextPageToken:      raw.NextPageToken,
+		ResultSizeEstimate: raw.ResultSizeEstimate,
+	}, nil
+}
+
 // Header is one entry from a Gmail message's parsed headers list.
 type Header struct {
 	Name  string `json:"name"`
@@ -87,28 +138,28 @@ type AttachmentMeta struct {
 // base64url-encoded inside MessagePart.Body.Data, which this helper decodes).
 // HTMLBody is the decoded text/html alternative when present.
 type Message struct {
-	ID          string
-	ThreadID    string
-	LabelIDs    []string
-	Snippet     string
-	HistoryID   string
+	ID           string
+	ThreadID     string
+	LabelIDs     []string
+	Snippet      string
+	HistoryID    string
 	InternalDate int64
-	Headers     []Header
-	Body        string // decoded text/plain
-	HTMLBody    string // decoded text/html
-	Attachments []AttachmentMeta
+	Headers      []Header
+	Body         string // decoded text/plain
+	HTMLBody     string // decoded text/html
+	Attachments  []AttachmentMeta
 }
 
 // gmailMessagePart matches Gmail's MessagePart shape closely enough to
 // decode the recursive body+attachment tree. Kept private — callers see
 // the flattened Message struct above.
 type gmailMessagePart struct {
-	PartID   string             `json:"partId"`
-	MimeType string             `json:"mimeType"`
-	Filename string             `json:"filename"`
-	Headers  []Header           `json:"headers"`
+	PartID   string               `json:"partId"`
+	MimeType string               `json:"mimeType"`
+	Filename string               `json:"filename"`
+	Headers  []Header             `json:"headers"`
 	Body     gmailMessagePartBody `json:"body"`
-	Parts    []gmailMessagePart `json:"parts"`
+	Parts    []gmailMessagePart   `json:"parts"`
 }
 
 type gmailMessagePartBody struct {

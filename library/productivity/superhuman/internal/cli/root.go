@@ -12,9 +12,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/client"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/config"
+	"github.com/spf13/cobra"
 )
 
 var version = "1.1.0"
@@ -230,6 +230,7 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.AddCommand(newWhichCmd(flags))
 	rootCmd.AddCommand(newImportCmd(flags))
 	rootCmd.AddCommand(newSyncCmd(flags))
+	rootCmd.AddCommand(newBootstrapCmd(flags))
 	rootCmd.AddCommand(newWorkflowCmd(flags))
 	rootCmd.AddCommand(newAPICmd(flags))
 	rootCmd.AddCommand(newAiPromotedCmd(flags))

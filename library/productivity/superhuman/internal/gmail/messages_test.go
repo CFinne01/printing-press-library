@@ -110,6 +110,37 @@ func TestListInboxThreads_PageSizeClamped(t *testing.T) {
 	}
 }
 
+func TestListMessages_LabelQueryAndPageToken(t *testing.T) {
+	var observedQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observedQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{
+			"messages": [{"id":"m1","threadId":"t1"}],
+			"nextPageToken": "next-1",
+			"resultSizeEstimate": 10
+		}`))
+	}))
+	defer srv.Close()
+	withBaseURL(t, srv.URL)
+
+	c := nonRefreshingClient(t)
+	res, err := c.ListMessages(context.Background(), []string{"INBOX", "STARRED"}, "from:alice@example.com", 999, "page-1")
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	for _, want := range []string{"labelIds=INBOX", "labelIds=STARRED", "maxResults=500", "pageToken=page-1", "q=from%3Aalice%40example.com"} {
+		if !strings.Contains(observedQuery, want) {
+			t.Fatalf("query %q missing %q", observedQuery, want)
+		}
+	}
+	if len(res.Messages) != 1 || res.Messages[0].ID != "m1" {
+		t.Fatalf("messages = %+v", res.Messages)
+	}
+	if res.NextPageToken != "next-1" || res.ResultSizeEstimate != 10 {
+		t.Fatalf("pagination fields wrong: %+v", res)
+	}
+}
+
 // TestGetMessage_DecodesBodyAndAttachments exercises the full message-tree
 // walk: text/plain, text/html, and one attachment with id/size.
 func TestGetMessage_DecodesBodyAndAttachments(t *testing.T) {

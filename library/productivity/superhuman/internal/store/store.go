@@ -41,7 +41,7 @@ func IsUUID(s string) bool {
 // shape — adding columns, dropping indexes, changing FTS5 tokenizers —
 // so an older binary refuses to open a newer database rather than silently
 // producing wrong results against a schema it cannot read.
-const StoreSchemaVersion = 2
+const StoreSchemaVersion = 3
 
 const resourcesFTSCreateSQL = `CREATE VIRTUAL TABLE IF NOT EXISTS resources_fts USING fts5(
 	id, resource_type, content, tokenize='porter unicode61'
@@ -226,6 +226,19 @@ func (s *Store) backfillColumns(ctx context.Context, conn *sql.Conn) error {
 		{table: "drafts", column: "client_created_at", decl: "TEXT"},
 		{table: "drafts", column: "current_history_id", decl: "INTEGER"},
 		{table: "messages", column: "send_at", decl: "INTEGER"},
+		{table: "messages", column: "thread_id", decl: "TEXT"},
+		{table: "messages", column: "account_email", decl: "TEXT"},
+		{table: "messages", column: "label_ids", decl: "TEXT"},
+		{table: "messages", column: "from", decl: "TEXT"},
+		{table: "messages", column: "to", decl: "TEXT"},
+		{table: "messages", column: "cc", decl: "TEXT"},
+		{table: "messages", column: "subject", decl: "TEXT"},
+		{table: "messages", column: "snippet", decl: "TEXT"},
+		{table: "messages", column: "body_plain", decl: "TEXT"},
+		{table: "messages", column: "body_html", decl: "TEXT"},
+		{table: "messages", column: "rfc822_id", decl: "TEXT"},
+		{table: "messages", column: "history_id", decl: "TEXT"},
+		{table: "messages", column: "internal_date", decl: "INTEGER"},
 		{table: "reminders", column: "reminder_id", decl: "TEXT"},
 		{table: "reminders", column: "thread_id", decl: "TEXT"},
 		{table: "reminders", column: "trigger_at", decl: "TEXT"},
@@ -269,7 +282,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	if current > StoreSchemaVersion {
-		return fmt.Errorf("database schema version %d is newer than supported version %d; upgrade the CLI binary or open an older database", current, StoreSchemaVersion)
+		return fmt.Errorf("database schema version %d is newer than supported version %d; this database was created by a newer binary; downgrade by `rm %s` or upgrade the binary", current, StoreSchemaVersion, s.path)
 	}
 
 	migrations := []string{
@@ -336,8 +349,24 @@ func (s *Store) migrate(ctx context.Context) error {
 			"id" TEXT PRIMARY KEY,
 			"data" JSON NOT NULL,
 			"synced_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
-			"send_at" INTEGER
+			"send_at" INTEGER,
+			"thread_id" TEXT,
+			"account_email" TEXT,
+			"label_ids" TEXT,
+			"from" TEXT,
+			"to" TEXT,
+			"cc" TEXT,
+			"subject" TEXT,
+			"snippet" TEXT,
+			"body_plain" TEXT,
+			"body_html" TEXT,
+			"rfc822_id" TEXT,
+			"history_id" TEXT,
+			"internal_date" INTEGER
 		)`,
+	}
+	migrations = append(migrations, schemaV3MigrationSQL()...)
+	migrations = append(migrations, []string{
 		`CREATE TABLE IF NOT EXISTS "reminders" (
 			"id" TEXT PRIMARY KEY,
 			"data" JSON NOT NULL,
@@ -374,7 +403,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			"name" TEXT,
 			"progress" INTEGER
 		)`,
-	}
+	}...)
 
 	// Run every migration — including the column backfill and the
 	// schema-version stamp — inside a single BEGIN IMMEDIATE transaction
@@ -398,7 +427,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("reading schema version: %w", err)
 		}
 		if current > StoreSchemaVersion {
-			return fmt.Errorf("database schema version %d is newer than supported version %d; upgrade the CLI binary or open an older database", current, StoreSchemaVersion)
+			return fmt.Errorf("database schema version %d is newer than supported version %d; this database was created by a newer binary; downgrade by `rm %s` or upgrade the binary", current, StoreSchemaVersion, s.path)
 		}
 
 		if current < 2 {
