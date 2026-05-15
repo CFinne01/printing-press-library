@@ -131,10 +131,14 @@ func (c *Client) readCache(path string, params map[string]string) (json.RawMessa
 	return json.RawMessage(data), true
 }
 
+// PATCH(greptile-p2-cache-perms): cache contains full email thread bodies
+// and message content. World-readable perms exposed it to any local user
+// on shared hosts. Lock the directory to 0o700 and files to 0o600 so the
+// cache matches the token-store's existing 0o600 hardening.
 func (c *Client) writeCache(path string, params map[string]string, data json.RawMessage) {
-	os.MkdirAll(c.cacheDir, 0o755)
+	os.MkdirAll(c.cacheDir, 0o700)
 	cacheFile := filepath.Join(c.cacheDir, c.cacheKey(path, params)+".json")
-	os.WriteFile(cacheFile, []byte(data), 0o644)
+	os.WriteFile(cacheFile, []byte(data), 0o600)
 }
 
 // invalidateCache wholesale-removes the cache directory so the next read

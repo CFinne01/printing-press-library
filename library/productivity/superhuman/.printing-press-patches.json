@@ -103,6 +103,26 @@
         "README.md"
       ],
       "validated_outcome": "Known-token grep gate returns zero matches."
+    },
+    {
+      "id": "greptile-p2-html-escape",
+      "summary": "HTML-escape plain-text send bodies before the <div> wrap.",
+      "reason": "renderBody wrapped raw plain-text bodies in <div>, so user-supplied `<`, `>`, `&` (including <script>) rendered as HTML in recipient clients. Escape first, then substitute newlines for <br> so the <br> survives. Surfaced by greptile P2 on PR #578.",
+      "files": [
+        "internal/cli/send.go",
+        "internal/cli/send_test.go"
+      ],
+      "validated_outcome": "TestRenderBody_PlainTextEscapesHTML covers angle brackets, script tags, ampersands, and HTML-mode pass-through."
+    },
+    {
+      "id": "greptile-p2-cache-perms",
+      "summary": "Lock HTTP response cache directory to 0o700 and cache files to 0o600.",
+      "reason": "writeCache created the cache dir with 0o755 and files with 0o644, exposing full email thread bodies to any local user on shared hosts. Token store was already 0o600; this brings the cache into parity. Surfaced by greptile P2 on PR #578.",
+      "files": [
+        "internal/client/client.go",
+        "internal/client/cache_perms_test.go"
+      ],
+      "validated_outcome": "TestWriteCacheDirAndFilePerms pins 0o700 dir + 0o600 file."
     }
   ]
 }

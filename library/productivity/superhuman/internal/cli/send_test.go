@@ -451,6 +451,33 @@ func TestRenderBody_PlainTextWrapping(t *testing.T) {
 	}
 }
 
+// TestRenderBody_PlainTextEscapesHTML pins the greptile-p2-html-escape
+// patch behavior: plain-text bodies must HTML-escape `<`, `>`, `&` before
+// the <div> wrap so user-supplied tags do not inject into recipient
+// rendering. asHTML=true still passes through verbatim.
+func TestRenderBody_PlainTextEscapesHTML(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		html bool
+		want string
+	}{
+		{"angle-bracket-url", "See <https://example.com>", false, "<div>See &lt;https://example.com&gt;</div>"},
+		{"script-tag", "<script>alert(1)</script>", false, "<div>&lt;script&gt;alert(1)&lt;/script&gt;</div>"},
+		{"ampersand", "A & B", false, "<div>A &amp; B</div>"},
+		{"escape-then-break", "line1 <x>\nline2", false, "<div>line1 &lt;x&gt;<br>line2</div>"},
+		{"html-mode-untouched", "<b>bold</b>", true, "<b>bold</b>"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderBody(tc.body, tc.html)
+			if got != tc.want {
+				t.Fatalf("body %q html=%v\n got %q\nwant %q", tc.body, tc.html, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestIsMultiRecipient covers the boolean Superhuman's analytics field
 // records for delivery routing.
 func TestIsMultiRecipient(t *testing.T) {

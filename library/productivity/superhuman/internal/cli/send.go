@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -932,13 +933,21 @@ func buildOutgoingMessage(in sendInputs) outgoingMessage {
 // renderBody wraps plain-text bodies in <div> so Superhuman's HTML renderer
 // preserves line breaks and renders consistently with the web UI's "plain
 // text" mode. HTML bodies pass through untouched.
+//
+// PATCH(greptile-p2-html-escape): plain-text bodies must be HTML-escaped
+// before the <div> wrap. Without escaping, raw `<`, `>`, `&` from user
+// input render as HTML in recipient clients - URLs like
+// `<https://example.com>` get dropped as unknown tags, and `<script>` and
+// friends inject verbatim. Escape FIRST, then substitute newlines for
+// <br> so the <br> tags themselves survive the escape.
 func renderBody(body string, asHTML bool) string {
 	if asHTML {
 		return body
 	}
 	// Normalize CRLF/CR to LF so the <br> substitution is uniform.
 	normalized := strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\r", "\n")
-	withBreaks := strings.ReplaceAll(normalized, "\n", "<br>")
+	escaped := html.EscapeString(normalized)
+	withBreaks := strings.ReplaceAll(escaped, "\n", "<br>")
 	return "<div>" + withBreaks + "</div>"
 }
 
