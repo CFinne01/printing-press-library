@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/auth"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/client"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/cliutil"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/config"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // looksLikeDoctorInterstitial reports whether the response body matches a known
@@ -208,6 +208,8 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 			// place. Auto-refresh fires on 401 (see internal/gmail
 			// DoWithRefresh), but doctor visibility is still useful.
 			report["gmail_oauth"] = collectGmailOAuthReport(cfg)
+			report["tokens"] = collectTokenRefreshStateReport(cfg)
+			report["auto_refresh_active"] = doctorAutoRefreshActive(flags)
 
 			// Cache health: only reported when this CLI has a local store.
 			// Surfaces rows + last_synced_at per resource, schema version,
@@ -216,6 +218,7 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 			report["cache"] = collectCacheReport(cmd.Context(), "")
 
 			report["version"] = version
+			report["binary_age_days"] = currentBinaryAgeDays()
 
 			if flags.asJSON {
 				if err := printJSONFiltered(cmd.OutOrStdout(), report, flags); err != nil {
@@ -263,7 +266,7 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 				fmt.Fprintf(w, "  %s %s: %s\n", indicator, ck.label, s)
 			}
 			// Print info keys without status indicator
-			for _, key := range []string{"config_path", "base_url", "auth_source", "version"} {
+			for _, key := range []string{"config_path", "base_url", "auth_source", "version", "binary_age_days", "auto_refresh_active"} {
 				if v, ok := report[key]; ok {
 					fmt.Fprintf(w, "  %s: %v\n", key, v)
 				}
@@ -607,4 +610,74 @@ func collectGmailOAuthReport(cfg *config.Config) string {
 	default:
 		return fmt.Sprintf("ok (expires in %s)", humanizeDuration(delta))
 	}
+}
+
+func collectTokenRefreshStateReport(cfg *config.Config) map[string]any {
+	report := map[string]any{}
+	if cfg == nil {
+		report["status"] = "skipped"
+		report["reason"] = "no config"
+		return report
+	}
+	report["token_store_path"] = cfg.TokenStorePath()
+	email, err := cfg.ResolveActiveEmail()
+	if err != nil {
+		report["status"] = "error"
+		report["error"] = err.Error()
+		return report
+	}
+	if email == "" {
+		report["status"] = "skipped"
+		report["reason"] = "no active account"
+		return report
+	}
+	report["active_account"] = email
+	tokenStore := auth.NewStoreAt(cfg.TokenStorePath())
+	persisted, loadErr := tokenStore.Load()
+	if loadErr != nil {
+		report["status"] = "error"
+		report["error"] = loadErr.Error()
+		return report
+	}
+	report["account_count"] = len(persisted.Accounts)
+	acct, ok := persisted.Accounts[email]
+	if !ok {
+		report["status"] = "error"
+		report["error"] = fmt.Sprintf("active account %s not in token store", email)
+		return report
+	}
+	state := auth.ClassifyRefreshState(acct)
+	report["status"] = string(state.State)
+	report["active"] = state
+	return report
+}
+
+func doctorAutoRefreshActive(flags *rootFlags) bool {
+	if flags != nil && flags.noRefresh {
+		return false
+	}
+	return !envBool(os.Getenv(autoRefreshEnvVar))
+}
+
+func currentBinaryAgeDays() int {
+	path, err := os.Executable()
+	if err != nil {
+		return -1
+	}
+	days, err := binaryAgeDaysAt(path, time.Now())
+	if err != nil {
+		return -1
+	}
+	return days
+}
+
+func binaryAgeDaysAt(path string, now time.Time) (int, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	if fi.ModTime().After(now) {
+		return 0, nil
+	}
+	return int(now.Sub(fi.ModTime()).Hours() / 24), nil
 }

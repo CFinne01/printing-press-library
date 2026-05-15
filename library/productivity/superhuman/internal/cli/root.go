@@ -93,7 +93,7 @@ func Execute() error {
 		// usage errors that the helpers.go contract already promises.
 		return usageErr(err)
 	}
-	return err
+	return addAuthLoginChromeHint(err)
 }
 
 // isCobraUsageError reports whether err matches one of Cobra/pflag's
@@ -126,6 +126,21 @@ func isCobraUsageError(err error) bool {
 		strings.HasPrefix(msg, `required flag(s) "`) ||
 		strings.HasPrefix(msg, "flag needs an argument:") ||
 		strings.HasPrefix(msg, `invalid argument "`)
+}
+
+func addAuthLoginChromeHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	if !strings.Contains(lower, "401") && !strings.Contains(lower, "unauthorized") {
+		return err
+	}
+	if strings.Contains(lower, "auth login --chrome") {
+		return err
+	}
+	return fmt.Errorf("%w\nhint: run 'superhuman-pp-cli auth login --chrome' to re-authenticate", err)
 }
 
 func newRootCmd(flags *rootFlags) *cobra.Command {
