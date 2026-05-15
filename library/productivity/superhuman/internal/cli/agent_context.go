@@ -22,13 +22,14 @@ const agentContextSchemaVersion = "3"
 // (2026-04-13 Wrangler post): agents can introspect the live CLI without
 // parsing --help or reading source.
 type agentContext struct {
-	SchemaVersion              string                 `json:"schema_version"`
-	CLI                        agentContextCLI        `json:"cli"`
-	Auth                       agentContextAuth       `json:"auth"`
-	Discovery                  *agentContextDiscovery `json:"discovery,omitempty"`
-	Commands                   []agentContextCommand  `json:"commands"`
-	AvailableProfiles          []string               `json:"available_profiles"`
-	FeedbackEndpointConfigured bool                   `json:"feedback_endpoint_configured"`
+	SchemaVersion              string                  `json:"schema_version"`
+	CLI                        agentContextCLI         `json:"cli"`
+	Auth                       agentContextAuth        `json:"auth"`
+	AutoRefresh                agentContextAutoRefresh `json:"auto_refresh"`
+	Discovery                  *agentContextDiscovery  `json:"discovery,omitempty"`
+	Commands                   []agentContextCommand   `json:"commands"`
+	AvailableProfiles          []string                `json:"available_profiles"`
+	FeedbackEndpointConfigured bool                    `json:"feedback_endpoint_configured"`
 }
 
 type agentContextCLI struct {
@@ -48,6 +49,15 @@ type agentContextAuthEnvVar struct {
 	Required    bool   `json:"required"`
 	Sensitive   bool   `json:"sensitive"`
 	Description string `json:"description,omitempty"`
+}
+
+type agentContextAutoRefresh struct {
+	Default      string   `json:"default"`
+	Flag         string   `json:"flag"`
+	Env          string   `json:"env"`
+	ProfileField string   `json:"profile_field"`
+	Surfaces     []string `json:"surfaces"`
+	SkipList     []string `json:"skip_list"`
 }
 
 type agentContextDiscovery struct {
@@ -130,6 +140,14 @@ func buildAgentContext(rootCmd *cobra.Command) agentContext {
 		Auth: agentContextAuth{
 			Mode:    authMode,
 			EnvVars: envVars,
+		},
+		AutoRefresh: agentContextAutoRefresh{
+			Default:      "on",
+			Flag:         "--no-refresh",
+			Env:          autoRefreshEnvVar,
+			ProfileField: "no-refresh",
+			Surfaces:     []string{"gmail", "cache"},
+			SkipList:     append([]string(nil), autoRefreshSkipCommands...),
 		},
 		Discovery:                  buildAgentDiscoveryContext(),
 		Commands:                   collectAgentCommands(rootCmd),

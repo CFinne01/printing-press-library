@@ -39,6 +39,7 @@ type rootFlags struct {
 	rateLimit     float64
 	dataSource    string
 	freshnessMeta any
+	noRefresh     bool
 
 	// account pins the active Superhuman email so per-command auth resolves
 	// to that token-store entry. Empty selects the most-recently-used
@@ -165,6 +166,7 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.PersistentFlags().StringVar(&flags.deliverSpec, "deliver", "", "Route output to a sink: stdout (default), file:<path>, webhook:<url>")
 	rootCmd.PersistentFlags().Float64Var(&flags.rateLimit, "rate-limit", 0, "Max requests per second (0 to disable)")
 	rootCmd.PersistentFlags().StringVar(&flags.account, "account", "", "Superhuman account email (default: most-recently-used account in token store)")
+	rootCmd.PersistentFlags().BoolVar(&flags.noRefresh, "no-refresh", false, "Disable automatic Gmail history refresh before read commands")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if flags.deliverSpec != "" {
@@ -217,6 +219,8 @@ See README.md or the bundled SKILL.md for recipes.`,
 		default:
 			return fmt.Errorf("invalid --data-source value %q: must be auto, live, or local", flags.dataSource)
 		}
+		summary := runAutoRefresh(cmd, flags)
+		flags.freshnessMeta = summary.meta()
 		return nil
 	}
 	rootCmd.AddCommand(newDraftsCmd(flags))
