@@ -89,6 +89,20 @@ func runWatch(cmd *cobra.Command, flags *rootFlags, interval time.Duration, once
 	}
 }
 
+// PATCH(greptile-watch-filter-symmetry): apply --filter to every event
+// type symmetrically. The prior implementation filtered message_added and
+// label_added but emitted message_deleted and label_removed unconditionally,
+// so an agent watching --filter label:INBOX would receive delete/archive
+// events from every other folder. The four cases now filter against the
+// most-relevant label set:
+//
+//   - message_added:   message's current labels (after the add)
+//   - message_deleted: message's labels at delete time (Gmail history
+//                      records carry them)
+//   - label_added:     the added label set
+//   - label_removed:   the removed label set (so removing INBOX matches a
+//                      --filter label:INBOX watcher's archive interest;
+//                      removing STARRED matches a STARRED watcher)
 func emitWatchEvents(cmd *cobra.Command, delta *gmail.HistoryResponse, filter string) error {
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	for _, record := range delta.History {
@@ -106,6 +120,9 @@ func emitWatchEvents(cmd *cobra.Command, delta *gmail.HistoryResponse, filter st
 			}
 		}
 		for _, deleted := range record.MessagesDeleted {
+			if !watchEventMatchesFilter(deleted.Message.LabelIDs, filter) {
+				continue
+			}
 			if err := enc.Encode(map[string]any{
 				"event":      "message_deleted",
 				"message_id": deleted.Message.ID,
@@ -132,6 +149,9 @@ func emitWatchEvents(cmd *cobra.Command, delta *gmail.HistoryResponse, filter st
 			}
 		}
 		for _, change := range record.LabelsRemoved {
+			if !watchEventMatchesFilter(change.LabelIDs, filter) {
+				continue
+			}
 			for _, label := range change.LabelIDs {
 				event := "label_removed"
 				if strings.EqualFold(label, "INBOX") {

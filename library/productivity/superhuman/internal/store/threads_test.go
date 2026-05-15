@@ -96,3 +96,63 @@ func TestListThreadsFilteredByThreadIDs(t *testing.T) {
 		t.Fatalf("threads = %+v, want t2 only", threads)
 	}
 }
+
+// TestFilterThreadsByLabelsUsesLabelIndex pins the
+// greptile-label-index-n-plus-one patch. It verifies the AND-semantics
+// across two required labels (TypeLabel + Label both must be present on
+// the same thread's messages) and that the path correctly excludes a
+// thread carrying only one of the two labels. Performance characteristic
+// (single grouped query per label vs per-thread N+1) is implicit; the
+// correctness behavior pinned here is what would regress if the SQL got
+// reverted to the prior shape.
+func TestFilterThreadsByLabelsUsesLabelIndex(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	if _, err := s.UpsertGmailMessages(ctx, []StoredMessage{
+		// tBoth has messages with BOTH SENT and Pitch labels (on the same message).
+		{ID: "m1", ThreadID: "tBoth", AccountEmail: "user@example.com", LabelIDs: []string{"SENT", "Pitch"}, From: "user@example.com", To: "alice@example.com", InternalDate: 500},
+		// tSentOnly has SENT but not Pitch.
+		{ID: "m2", ThreadID: "tSentOnly", AccountEmail: "user@example.com", LabelIDs: []string{"SENT"}, From: "user@example.com", To: "bob@example.com", InternalDate: 400},
+		// tPitchOnly has Pitch but not SENT.
+		{ID: "m3", ThreadID: "tPitchOnly", AccountEmail: "user@example.com", LabelIDs: []string{"Pitch"}, From: "c@example.com", To: "user@example.com", InternalDate: 300},
+		// tNeither has neither.
+		{ID: "m4", ThreadID: "tNeither", AccountEmail: "user@example.com", LabelIDs: []string{"INBOX"}, From: "d@example.com", To: "user@example.com", InternalDate: 200},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	threads, err := s.ListThreadsFiltered(ctx, ThreadFilter{
+		AccountEmail: "user@example.com",
+		TypeLabel:    "SENT",
+		Label:        "Pitch",
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("ListThreadsFiltered: %v", err)
+	}
+	if len(threads) != 1 || threads[0].ThreadID != "tBoth" {
+		t.Fatalf("AND-filter result = %+v, want [tBoth]", threads)
+	}
+
+	// Single-label query: SENT alone should return tBoth + tSentOnly.
+	sent, err := s.ListThreadsFiltered(ctx, ThreadFilter{
+		AccountEmail: "user@example.com",
+		TypeLabel:    "SENT",
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("ListThreadsFiltered SENT: %v", err)
+	}
+	got := map[string]bool{}
+	for _, th := range sent {
+		got[th.ThreadID] = true
+	}
+	if !(got["tBoth"] && got["tSentOnly"] && len(got) == 2) {
+		t.Fatalf("SENT result = %v, want exactly {tBoth, tSentOnly}", got)
+	}
+}

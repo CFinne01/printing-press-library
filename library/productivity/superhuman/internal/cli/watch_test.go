@@ -4,12 +4,15 @@
 package cli
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/gmail"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/store"
@@ -64,5 +67,71 @@ func TestWatchFilterAndIntervalValidation(t *testing.T) {
 	_, _, err := executeCmd(t, "--config", configPath, "watch", "--interval", "0")
 	if err == nil {
 		t.Fatalf("expected interval validation error")
+	}
+}
+
+// TestEmitWatchEventsFilterSymmetry pins the greptile-watch-filter-symmetry
+// patch: --filter must apply to every event type, not just message_added
+// and label_added. The prior implementation emitted message_deleted and
+// label_removed unconditionally, leaking events from unrelated folders to
+// agents that scoped their watch with --filter label:INBOX.
+func TestEmitWatchEventsFilterSymmetry(t *testing.T) {
+	delta := &gmail.HistoryResponse{
+		History: []gmail.HistoryRecord{{
+			ID: "h1",
+			MessagesAdded: []gmail.HistoryMessageChange{
+				{Message: gmail.HistoryMessage{ID: "m1", ThreadID: "t1", LabelIDs: []string{"INBOX"}}},
+				{Message: gmail.HistoryMessage{ID: "m2", ThreadID: "t2", LabelIDs: []string{"SENT"}}},
+			},
+			MessagesDeleted: []gmail.HistoryMessageChange{
+				{Message: gmail.HistoryMessage{ID: "m3", ThreadID: "t3", LabelIDs: []string{"INBOX"}}},
+				{Message: gmail.HistoryMessage{ID: "m4", ThreadID: "t4", LabelIDs: []string{"SPAM"}}},
+			},
+			LabelsAdded: []gmail.HistoryLabelChange{
+				{Message: gmail.HistoryMessage{ID: "m5", ThreadID: "t5"}, LabelIDs: []string{"INBOX"}},
+				{Message: gmail.HistoryMessage{ID: "m6", ThreadID: "t6"}, LabelIDs: []string{"STARRED"}},
+			},
+			LabelsRemoved: []gmail.HistoryLabelChange{
+				{Message: gmail.HistoryMessage{ID: "m7", ThreadID: "t7"}, LabelIDs: []string{"INBOX"}},
+				{Message: gmail.HistoryMessage{ID: "m8", ThreadID: "t8"}, LabelIDs: []string{"TRASH"}},
+			},
+		}},
+	}
+
+	cases := []struct {
+		filter        string
+		mustContain   []string
+		mustNotContain []string
+	}{
+		{
+			filter:        "label:INBOX",
+			mustContain:   []string{`"event":"message_added"`, `"message_id":"m1"`, `"event":"message_deleted"`, `"message_id":"m3"`, `"event":"label_added"`, `"message_id":"m5"`, `"event":"thread_archived"`, `"message_id":"m7"`},
+			mustNotContain: []string{`"message_id":"m2"`, `"message_id":"m4"`, `"message_id":"m6"`, `"message_id":"m8"`},
+		},
+		{
+			filter:      "", // unfiltered passes everything
+			mustContain: []string{`"message_id":"m1"`, `"message_id":"m2"`, `"message_id":"m3"`, `"message_id":"m4"`, `"message_id":"m5"`, `"message_id":"m6"`, `"message_id":"m7"`, `"message_id":"m8"`},
+		},
+	}
+	for _, tc := range cases {
+		t.Run("filter="+tc.filter, func(t *testing.T) {
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			if err := emitWatchEvents(cmd, delta, tc.filter); err != nil {
+				t.Fatalf("emitWatchEvents: %v", err)
+			}
+			got := buf.String()
+			for _, want := range tc.mustContain {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q in output:\n%s", want, got)
+				}
+			}
+			for _, deny := range tc.mustNotContain {
+				if strings.Contains(got, deny) {
+					t.Errorf("unexpected %q in output:\n%s", deny, got)
+				}
+			}
+		})
 	}
 }

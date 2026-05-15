@@ -6,7 +6,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -115,36 +114,111 @@ func (s *Store) ListThreadsFiltered(ctx context.Context, filter ThreadFilter) ([
 	return out, nil
 }
 
+// filterThreadsByLabels returns the subset of threads where at least one
+// message carries every required label in filter.TypeLabel and filter.Label.
+//
+// PATCH(greptile-label-index-n-plus-one): use the label_index table (kept
+// current by the AFTER INSERT/UPDATE/DELETE triggers on messages) instead
+// of issuing one JSON-decode-per-thread SQL query. The prior loop:
+//
+//	for each thread: SELECT label_ids FROM messages WHERE thread_id = ?;
+//	                 JSON-decode every row; check membership.
+//
+// scaled O(threads*messages_per_thread) for what label_index makes a single
+// indexed equality lookup. The triggers were already paying their write
+// cost; the read path now actually uses the table.
+//
+// Implementation: per required label, fetch the set of thread IDs (via
+// label_index JOIN messages.id) that carry that label, then intersect.
+// A thread passes the filter when its ID appears in every required set.
 func (s *Store) filterThreadsByLabels(ctx context.Context, threads []ThreadSummary, filter ThreadFilter) ([]ThreadSummary, error) {
-	out := threads[:0]
-	for _, thread := range threads {
-		rows, err := s.db.QueryContext(ctx, `SELECT "label_ids" FROM "messages" WHERE "thread_id" = ? AND (? = '' OR "account_email" = ?)`, thread.ThreadID, filter.AccountEmail, filter.AccountEmail)
-		if err != nil {
-			return nil, fmt.Errorf("query labels for thread %s: %w", thread.ThreadID, err)
+	required := requiredLabels(filter)
+	if len(required) == 0 {
+		return threads, nil
+	}
+
+	// Collect candidate thread IDs we still need to test. Returning early
+	// when threads is empty avoids touching SQLite at all.
+	if len(threads) == 0 {
+		return threads, nil
+	}
+
+	candidate := make(map[string]bool, len(threads))
+	for _, t := range threads {
+		candidate[t.ThreadID] = true
+	}
+
+	// For each required label, narrow candidate to threads that carry it.
+	for _, label := range required {
+		// Build the placeholder list lazily; we only need candidate
+		// threads that are still in the running. SQLite supports
+		// parameter packs but not variadic IN binding, so we build a
+		// "(?,?,?,...)" list and bind each thread ID.
+		ids := make([]string, 0, len(candidate))
+		for id := range candidate {
+			ids = append(ids, id)
 		}
-		matched := false
+		if len(ids) == 0 {
+			return threads[:0], nil
+		}
+		placeholders := strings.Repeat("?,", len(ids))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]any, 0, len(ids)+2)
+		args = append(args, label, filter.AccountEmail, filter.AccountEmail)
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		query := `SELECT DISTINCT m."thread_id"
+			FROM "label_index" AS li
+			JOIN "messages" AS m ON m."id" = li."message_id"
+			WHERE li."label_id" = ?
+			  AND (? = '' OR li."account_email" = ?)
+			  AND m."thread_id" IN (` + placeholders + `)`
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query label_index for %q: %w", label, err)
+		}
+		next := make(map[string]bool, len(candidate))
 		for rows.Next() {
-			var raw sql.NullString
-			if err := rows.Scan(&raw); err != nil {
+			var threadID sql.NullString
+			if err := rows.Scan(&threadID); err != nil {
 				rows.Close()
-				return nil, fmt.Errorf("scan labels for thread %s: %w", thread.ThreadID, err)
+				return nil, fmt.Errorf("scan label_index row: %w", err)
 			}
-			var labels []string
-			if raw.Valid {
-				_ = json.Unmarshal([]byte(raw.String), &labels)
-			}
-			if labelMatch(labels, filter.TypeLabel) && labelMatch(labels, filter.Label) {
-				matched = true
+			if threadID.Valid && candidate[threadID.String] {
+				next[threadID.String] = true
 			}
 		}
 		if err := rows.Close(); err != nil {
-			return nil, fmt.Errorf("close labels for thread %s: %w", thread.ThreadID, err)
+			return nil, fmt.Errorf("close label_index rows: %w", err)
 		}
-		if matched {
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate label_index rows: %w", err)
+		}
+		candidate = next
+	}
+
+	out := threads[:0]
+	for _, thread := range threads {
+		if candidate[thread.ThreadID] {
 			out = append(out, thread)
 		}
 	}
 	return out, nil
+}
+
+// requiredLabels returns the non-empty filter labels in the order they
+// were supplied. Both TypeLabel and Label semantics are AND-joined: a
+// thread must carry every required label.
+func requiredLabels(filter ThreadFilter) []string {
+	var out []string
+	if filter.TypeLabel != "" {
+		out = append(out, filter.TypeLabel)
+	}
+	if filter.Label != "" && !strings.EqualFold(filter.Label, filter.TypeLabel) {
+		out = append(out, filter.Label)
+	}
+	return out
 }
 
 func labelMatch(labels []string, want string) bool {
