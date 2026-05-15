@@ -13,6 +13,9 @@ import (
 )
 
 func main() {
+	// PATCH(pii-scrub): default smoke-test inputs use example.com placeholders
+	// instead of real session-specific addresses. Real accounts come through
+	// os.Args at invocation time.
 	email := "user@example.com"
 	googleID := "123456789012345678901"
 	if len(os.Args) > 1 {
