@@ -451,56 +451,146 @@ func TestRenderBody_PlainTextWrapping(t *testing.T) {
 	}
 }
 
-// TestCancelSchedulePostsWriteMessage pins the greptile-cancel-schedule
-// patch: in live mode the helper must actually POST to
-// /v3/userdata.writeMessage with scheduledFor:null at the draft's path,
-// not just print a local payload. Dry-run continues to print without
-// firing.
-func TestCancelSchedulePostsWriteMessage(t *testing.T) {
-	var received []map[string]any
+// TestCancelScheduleReadModifyWrite pins the
+// greptile-cancel-schedule-full-payload patch: live mode must read the
+// existing draft via /v3/userdata.read, mutate scheduledFor to null on
+// the FULL value, and write the complete value back. A partial payload
+// (id+threadId+scheduledFor only) would trip the writeMessage validator's
+// aggregate schema check and 400 silently.
+func TestCancelScheduleReadModifyWrite(t *testing.T) {
+	draftID := "draft00abcdef12345678"
+	googleID := "gid-cancel"
+	expectedPath := "users/" + googleID + "/threads/" + draftID + "/messages/" + draftID + "/draft"
+
+	// The simulated stored draft has the full set of draftValue fields,
+	// already scheduled. The test asserts the write-back preserves all
+	// of them and only flips scheduledFor.
+	storedDraft := map[string]any{
+		"id":           draftID,
+		"threadId":     draftID,
+		"action":       "compose",
+		"name":         nil,
+		"from":         "Alice <alice@example.com>",
+		"to":           []any{"bob@example.com"},
+		"cc":           []any{},
+		"bcc":          []any{},
+		"subject":      "Scheduled subject",
+		"body":         "<div>hi</div>",
+		"snippet":      "",
+		"labelIds":     []any{"DRAFT"},
+		"scheduledFor": "2030-01-01T12:00:00Z",
+		"schemaVersion": 3,
+	}
+
+	var readRequests, writeRequests []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != sendEndpointWriteMessage {
-			http.Error(w, "wrong path: "+r.URL.Path, http.StatusNotFound)
-			return
-		}
 		body, _ := io.ReadAll(r.Body)
 		var payload map[string]any
 		_ = json.Unmarshal(body, &payload)
-		received = append(received, payload)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		switch r.URL.Path {
+		case "/v3/userdata.read":
+			readRequests = append(readRequests, payload)
+			resp := map[string]any{
+				"data": map[string]any{
+					"results": []map[string]any{
+						{"path": expectedPath, "value": storedDraft},
+					},
+				},
+			}
+			b, _ := json.Marshal(resp)
+			_, _ = w.Write(b)
+		case sendEndpointWriteMessage:
+			writeRequests = append(writeRequests, payload)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			http.Error(w, "wrong path: "+r.URL.Path, http.StatusNotFound)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
 	configPath, tokenStorePath := withConfigPath(t)
-	seedSendStore(t, tokenStorePath, "user@example.com", "gid-cancel")
+	seedSendStore(t, tokenStorePath, "user@example.com", googleID)
 	writeConfigPointingAt(t, configPath, srv.URL, "user@example.com")
 
-	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "send", "--cancel-schedule", "draft00abcdef12345678")
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "send", "--cancel-schedule", draftID)
 	if err != nil {
 		t.Fatalf("send --cancel-schedule: %v\n%s", err, stdout)
 	}
-	if len(received) != 1 {
-		t.Fatalf("expected 1 backend call, got %d", len(received))
+
+	if len(readRequests) != 1 {
+		t.Fatalf("expected 1 read call, got %d", len(readRequests))
 	}
-	writes, ok := received[0]["writes"].([]any)
+	reads, ok := readRequests[0]["reads"].([]any)
+	if !ok || len(reads) != 1 {
+		t.Fatalf("read payload missing reads[]: %+v", readRequests[0])
+	}
+	if got := reads[0].(map[string]any)["path"]; got != expectedPath {
+		t.Fatalf("read path = %v, want %v", got, expectedPath)
+	}
+
+	if len(writeRequests) != 1 {
+		t.Fatalf("expected 1 write call, got %d", len(writeRequests))
+	}
+	writes, ok := writeRequests[0]["writes"].([]any)
 	if !ok || len(writes) != 1 {
-		t.Fatalf("expected writes[1], got payload %+v", received[0])
+		t.Fatalf("write payload missing writes[]: %+v", writeRequests[0])
 	}
 	write := writes[0].(map[string]any)
-	wantPath := "users/gid-cancel/threads/draft00abcdef12345678/messages/draft00abcdef12345678/draft"
-	if got := write["path"]; got != wantPath {
-		t.Fatalf("write path = %v, want %v", got, wantPath)
+	if got := write["path"]; got != expectedPath {
+		t.Fatalf("write path = %v, want %v", got, expectedPath)
 	}
 	value := write["value"].(map[string]any)
-	if _, present := value["scheduledFor"]; !present {
-		t.Fatalf("value should explicitly carry scheduledFor (got %+v)", value)
+	// The full set of stored fields must be preserved...
+	for _, field := range []string{"id", "threadId", "action", "from", "to", "subject", "body", "labelIds", "schemaVersion"} {
+		if _, ok := value[field]; !ok {
+			t.Errorf("write value missing preserved field %q (full payload required by validator)", field)
+		}
 	}
+	// ...and only scheduledFor must be nil.
 	if value["scheduledFor"] != nil {
 		t.Fatalf("scheduledFor = %v, want nil", value["scheduledFor"])
 	}
+	if value["subject"] != "Scheduled subject" {
+		t.Fatalf("subject = %v, want preserved 'Scheduled subject'", value["subject"])
+	}
 	if !strings.Contains(stdout, `"success": true`) {
 		t.Fatalf("stdout missing success marker: %s", stdout)
+	}
+}
+
+// TestCancelScheduleNotFound covers the case where the draft no longer
+// exists at the read path. The helper must surface a clear not-found
+// error and skip the writeMessage call.
+func TestCancelScheduleNotFound(t *testing.T) {
+	var writeCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v3/userdata.read":
+			_, _ = w.Write([]byte(`{"data":{"results":[{"path":"users/x/threads/x/messages/x/draft","value":null}]}}`))
+		case sendEndpointWriteMessage:
+			atomic.AddInt32(&writeCalls, 1)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			http.Error(w, "wrong path", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	configPath, tokenStorePath := withConfigPath(t)
+	seedSendStore(t, tokenStorePath, "user@example.com", "gid-nf")
+	writeConfigPointingAt(t, configPath, srv.URL, "user@example.com")
+
+	_, _, err := executeCmd(t, "--config", configPath, "--json", "send", "--cancel-schedule", "draft00ffffffffffffff")
+	if err == nil {
+		t.Fatalf("expected not-found error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("error should mention not found, got: %v", err)
+	}
+	if got := atomic.LoadInt32(&writeCalls); got != 0 {
+		t.Fatalf("not-found path must skip the write call; got %d", got)
 	}
 }
 

@@ -475,11 +475,17 @@ func runSend(cmd *cobra.Command, flags *rootFlags, a sendCmdArgs) error {
 // runCancelSchedule clears the scheduledFor field on an existing scheduled
 // draft so the send no longer fires at the future time.
 //
-// PATCH(greptile-cancel-schedule): the prior implementation built a payload
-// and printed it for BOTH dry-run and live paths, never reaching the API.
-// Live mode now POSTs to /v3/userdata.writeMessage with scheduledFor:null at
-// the existing draft's path - same shape `step1WriteMessage` uses for
-// scheduled sends. Dry-run continues to print the would-send envelope.
+// PATCH(greptile-cancel-schedule): the original prior implementation built
+// a payload and printed it for BOTH dry-run and live paths, never reaching
+// the API.
+//
+// PATCH(greptile-cancel-schedule-full-payload): a follow-up fix made the
+// API call but sent only `{id, threadId, scheduledFor: null}` to
+// writeMessage. The bundle's draftValue validator does an aggregate
+// schema check (see file header) and rejects any partial value with a
+// generic 400. The correct shape is read-modify-write: fetch the existing
+// draft via /v3/userdata.read, set scheduledFor:null on the FULL value,
+// and write the complete object back via /v3/userdata.writeMessage.
 func runCancelSchedule(cmd *cobra.Command, flags *rootFlags, draftID string) error {
 	if draftID == "" {
 		return usageErr(fmt.Errorf("send: --cancel-schedule requires a draft id"))
@@ -489,35 +495,62 @@ func runCancelSchedule(cmd *cobra.Command, flags *rootFlags, draftID string) err
 		return authErr(err)
 	}
 	writePath := fmt.Sprintf("users/%s/threads/%s/messages/%s/draft", acct.GoogleID, draftID, draftID)
-	body := map[string]any{
-		"doNotReturnValues": true,
-		"writes": []map[string]any{
-			{
-				"path": writePath,
-				"value": map[string]any{
-					"id":           draftID,
-					"threadId":     draftID,
-					"scheduledFor": nil,
-				},
-			},
-		},
-	}
+
 	if flags.dryRun || cliutil.IsVerifyEnv() {
 		envelope := map[string]any{
-			"action":   "cancel_schedule",
-			"path":     sendEndpointWriteMessage,
-			"dry_run":  true,
-			"draft_id": draftID,
-			"body":     body,
+			"action":    "cancel_schedule",
+			"path":      sendEndpointWriteMessage,
+			"read_path": writePath,
+			"dry_run":   true,
+			"draft_id":  draftID,
+			"note":      "live mode performs read-modify-write against the existing draft",
 		}
 		return printJSONFiltered(cmd.OutOrStdout(), envelope, flags)
 	}
+
 	c, err := flags.newClient()
 	if err != nil {
 		return err
 	}
-	if _, _, err := c.Post(sendEndpointWriteMessage, body); err != nil {
-		return apiErr(fmt.Errorf("cancel-schedule: %w", err))
+
+	// Step 1: read the existing draft value so the write-back has the
+	// full set of draftValue fields the validator demands.
+	readBody := map[string]any{
+		"reads": []map[string]any{
+			{"path": writePath},
+		},
+		"pageToken": nil,
+		"pageSize":  nil,
+	}
+	readData, _, err := c.Post("/v3/userdata.read", readBody)
+	if err != nil {
+		return apiErr(fmt.Errorf("cancel-schedule: read existing draft: %w", err))
+	}
+	existing, err := extractDraftValueForCancel(readData)
+	if err != nil {
+		return apiErr(fmt.Errorf("cancel-schedule: parse existing draft: %w", err))
+	}
+	if existing == nil {
+		return notFoundErr(fmt.Errorf("cancel-schedule: draft %s not found", draftID))
+	}
+
+	// Step 2: clear the schedule on the full value.
+	existing["scheduledFor"] = nil
+	// scheduledReplyInterruptedAt mirrors scheduledFor's lifecycle; clear
+	// it too so a future re-schedule on the same draft starts clean.
+	if _, ok := existing["scheduledReplyInterruptedAt"]; ok {
+		existing["scheduledReplyInterruptedAt"] = nil
+	}
+
+	// Step 3: write the complete value back.
+	writeBody := map[string]any{
+		"doNotReturnValues": true,
+		"writes": []map[string]any{
+			{"path": writePath, "value": existing},
+		},
+	}
+	if _, _, err := c.Post(sendEndpointWriteMessage, writeBody); err != nil {
+		return apiErr(fmt.Errorf("cancel-schedule: writeMessage: %w", err))
 	}
 	return printJSONFiltered(cmd.OutOrStdout(), map[string]any{
 		"action":   "cancel_schedule",
@@ -525,6 +558,31 @@ func runCancelSchedule(cmd *cobra.Command, flags *rootFlags, draftID string) err
 		"draft_id": draftID,
 		"success":  true,
 	}, flags)
+}
+
+// extractDraftValueForCancel parses a /v3/userdata.read response and
+// returns the first non-null `value` map under data.results[]. Returns
+// (nil, nil) when no result row was populated (caller treats as "not
+// found"). The shape mirrors what threads_get.go expects from the same
+// endpoint.
+func extractDraftValueForCancel(data []byte) (map[string]any, error) {
+	var envelope struct {
+		Data struct {
+			Results []struct {
+				Path  string         `json:"path"`
+				Value map[string]any `json:"value"`
+			} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, fmt.Errorf("decode userdata.read envelope: %w", err)
+	}
+	for _, r := range envelope.Data.Results {
+		if r.Value != nil {
+			return r.Value, nil
+		}
+	}
+	return nil, nil
 }
 
 func resolveSendBodyOrSnippet(cmd *cobra.Command, a sendCmdArgs) (string, error) {
