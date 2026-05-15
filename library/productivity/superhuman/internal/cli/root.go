@@ -239,6 +239,7 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.AddCommand(newAuthCmd(flags))
 	rootCmd.AddCommand(newAgentContextCmd(rootCmd))
 	rootCmd.AddCommand(newProfileCmd(flags))
+	rootCmd.AddCommand(newParticipantsCmd(flags))
 	rootCmd.AddCommand(newFeedbackCmd(flags))
 	rootCmd.AddCommand(newWhichCmd(flags))
 	rootCmd.AddCommand(newImportCmd(flags))
