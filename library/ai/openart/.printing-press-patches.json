@@ -32,14 +32,6 @@
         "internal/cli/credits_novel.go"
       ],
       "validated_outcome": "go test ./... passes. credits burn buckets by observation date, credits forecast's 28-day window only matches recently-observed spends. Migration is idempotent and backfills pre-existing rows from synced_at."
-    },
-    {
-      "id": "drop-cli-skills-mirror",
-      "summary": "Remove the manually-committed cli-skills/pp-openart/SKILL.md mirror.",
-      "reason": "AGENTS.md (Files NOT in the PR) requires the cli-skills mirror to stay out of new-CLI PRs; tools/generate-skills regenerates it post-merge from library/ai/openart/SKILL.md (greptile P2).",
-      "files": [
-        "cli-skills/pp-openart/SKILL.md"
-      ]
     }
   ]
 }
