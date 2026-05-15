@@ -15,6 +15,7 @@ func newDraftsCmd(flags *rootFlags) *cobra.Command {
 	}
 
 	cmd.AddCommand(newDraftsListCmd(flags))
+	cmd.AddCommand(newDraftsNewCmd(flags))
 	cmd.AddCommand(newDraftsWriteCmd(flags))
 	// PATCH(2026-05-14-003 U9): drafts discard.
 	cmd.AddCommand(newDraftsDiscardCmd(flags))
