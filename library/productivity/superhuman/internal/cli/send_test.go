@@ -205,8 +205,14 @@ func TestBuildSendReminderValidation(t *testing.T) {
 	if _, err := buildSendReminder(now, "2d", "2026-05-20T08:00:00Z", false); err == nil {
 		t.Fatalf("expected mutually-exclusive reminder error")
 	}
-	if _, err := buildSendReminder(now, "30s", "", false); err == nil {
-		t.Fatalf("expected sub-hour reminder error")
+	// Sub-hour reminders are valid (the Superhuman web app accepts
+	// 1-minute reminders; see plan 2026-05-15-003 for the sniff).
+	subHour, err := buildSendReminder(now, "5m", "", false)
+	if err != nil {
+		t.Fatalf("sub-hour reminder should be valid, got error: %v", err)
+	}
+	if got, want := subHour.TriggerAt, now.Add(5*time.Minute).UnixMilli(); got != want {
+		t.Fatalf("5m triggerAt = %d want %d", got, want)
 	}
 	r, err := buildSendReminder(now, "", "2026-05-20T08:00:00Z", false)
 	if err != nil {
@@ -894,6 +900,9 @@ func TestSend_ReminderFlagErrors(t *testing.T) {
 	seedSendStore(t, tokenStorePath, "user@example.com", "1234567890123456789")
 	writeConfigPointingAt(t, configPath, "http://unused", "user@example.com")
 
+	// Zero / negative durations still error -- they're nonsensical, not
+	// just unusual. The 1h floor that used to live here is gone (see
+	// PATCH(reminders-floor) in send.go).
 	_, _, err := executeCmd(t,
 		"--config", configPath,
 		"send",
@@ -901,13 +910,13 @@ func TestSend_ReminderFlagErrors(t *testing.T) {
 		"--subject", "remind",
 		"--body", "hello",
 		"--from", "user@example.com",
-		"--remind-in", "30s",
+		"--remind-in", "0s",
 	)
 	if err == nil {
-		t.Fatalf("expected sub-hour reminder error")
+		t.Fatalf("expected error for zero-duration reminder")
 	}
-	if !strings.Contains(err.Error(), "at least 1h") {
-		t.Fatalf("error %q missing minimum window", err.Error())
+	if !strings.Contains(err.Error(), "positive") && !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("error %q should reference positive/invalid duration", err.Error())
 	}
 }
 

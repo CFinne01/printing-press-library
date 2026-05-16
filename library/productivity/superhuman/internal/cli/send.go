@@ -697,8 +697,14 @@ func buildSendReminder(now time.Time, remindIn, remindOn string, ifNoReply bool)
 		if err != nil {
 			return nil, fmt.Errorf("send: invalid --remind-in %q: %w", remindIn, err)
 		}
-		if d < time.Hour {
-			return nil, fmt.Errorf("send: --remind-in must be at least 1h")
+		// PATCH(reminders-floor): generator emitted a 1h floor that does
+		// not exist in the Superhuman web app (which accepts "1 minute"
+		// reminders) or the backend (which round-trips 1-minute reminders
+		// via /v3/userdata.write fine, per the browser sniff). Reject only
+		// non-positive durations -- the parse layer already does that, so
+		// this branch is just defense-in-depth for unsigned-overflow cases.
+		if d <= 0 {
+			return nil, fmt.Errorf("send: --remind-in must be a positive duration")
 		}
 		trigger = now.Add(d)
 	} else {
