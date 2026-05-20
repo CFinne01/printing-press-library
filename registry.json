@@ -1241,6 +1241,15 @@
       }
     },
     {
+      "name": "icloud",
+      "category": "media-and-entertainment",
+      "api": "iCloud",
+      "description": "Query iCloud data stored locally on macOS — Photos library storage analysis, with Contacts and more coming. All reads hit local SQLite databases directly; no network calls or iCloud API token required.",
+      "path": "library/media-and-entertainment/icloud",
+      "printer": "matysanchez",
+      "printer_name": "Matias Sanchez Moises"
+    },
+    {
       "name": "instacart",
       "category": "commerce",
       "api": "Instacart",
