@@ -294,9 +294,9 @@ Use Numista's `--date` (Gregorian calendar year) for the year PCGS returns, not 
 
 Notes:
 
-- The catalogue ID `1856` is also the answer the proposed `numista-pp-cli catalogues find pcgs` discovery helper returns (local-only, no quota cost) — see [PR #688](https://github.com/mvanhorn/printing-press-library/pull/688) for that subcommand. Until it lands, confirm the ID directly with `numista-pp-cli catalogues --json | jq '.results.catalogues[] | select(.code=="PCGS")'`.
+- Verify the catalogue ID at any time with `numista-pp-cli catalogues find pcgs` (local-only, no quota cost; requires that `numista-pp-cli catalogues` has been run at least once to populate the local cache).
 - This CLI does NOT depend on `numista-pp-cli`. No shell-out, no auto-detection — install it separately when you want catalogue enrichment.
-- A reciprocal "If your input is a PCGS cert" section is proposed for `numista-pp-cli`'s SKILL.md (see [PR #684](https://github.com/mvanhorn/printing-press-library/pull/684)) so an agent landing in either CLI gets directed to the other when the workflow calls for it.
+- `numista-pp-cli`'s SKILL.md has a matching "If your input is a PCGS cert" section so an agent landing in either CLI gets directed to the other when the workflow calls for it.
 
 ## Auth Setup
 
