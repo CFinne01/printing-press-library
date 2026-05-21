@@ -3456,6 +3456,56 @@
       }
     },
     {
+      "name": "loopnet",
+      "category": "commerce",
+      "api": "Loopnet",
+      "description": "LoopNet shows you today — this CLI remembers, building the price-cut, days-on-market, and supply trends LoopNet...",
+      "search_terms": [
+        "loopnet",
+        "loopnet-pp-cli",
+        "Price-cut detection",
+        "price-cuts",
+        "Surfaces every synced listing whose asking price dropped between syncs, with old price, new price, percent cut, and days on market at the cut.",
+        "Days-on-market",
+        "dom",
+        "Computes true days on market for every live listing from the date the CLI first saw it, and flags aged inventory past a threshold.",
+        "Market velocity",
+        "velocity",
+        "Reports absorption for a submarket: new listings, delistings, median days on market, and net supply change per period.",
+        "Delisting detection",
+        "delisted",
+        "Lists listings present in a prior sync but absent now — sold, withdrawn, or expired.",
+        "Cap-rate and yield distribution",
+        "caprate",
+        "Reports the cap-rate, NOI, and price-per-square-foot distribution (count, min, median, quartiles, max) for synced for-sale listings in a submarket, and flags listings whose cap rate falls outside the interquartile range.",
+        "Distress and motivation scan",
+        "distress",
+        "Flags listings carrying motivation signals: price-reduced and must-sell keyword hits in the description, Ten-X auction listings, and recent price cuts.",
+        "Submarket digest",
+        "digest",
+        "Rolls a synced submarket into one report: live supply count, recent price cuts, median days on market, new and delisted counts, and distress hits.",
+        "Pipeline feed export",
+        "feed",
+        "Exports the latest synced submarket as a run-stamped JSON or CSV file, with records mapped to the six CRE market-intelligence data categories."
+      ],
+      "path": "library/commerce/loopnet",
+      "printer": "melanson633",
+      "printer_name": "melanson633",
+      "mcp": {
+        "binary": "loopnet-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 2,
+        "public_tool_count": 2,
+        "auth_type": "none",
+        "env_vars": [],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "lunch-money",
       "category": "payments",
       "api": "Lunch Money",
