@@ -49,13 +49,22 @@ func newTailCmd(flags *rootFlags) *cobra.Command {
 				return emitDrudgeNoData(cmd.OutOrStdout(), flags)
 			}
 
+			// PATCH(greptile-2026-05-21:tail-n-plus-one): join the story
+			// title/url into the same query that pulls slot events. The
+			// previous implementation issued one SELECT per event row,
+			// which becomes a bottleneck as snapshot history grows.
+			// Joining on (story_id, snapshot_id) gives the title that
+			// existed at the time of the event — more accurate than the
+			// "most recent row" lookup the per-row query produced.
 			results := make([]map[string]any, 0)
 			if since > 0 {
 				cutoff := time.Now().UTC().Add(-since).Format(time.RFC3339Nano)
-				query := `SELECT event_id, snapshot_id, story_id, event_type, from_slot, to_slot, captured_at
-					FROM drudge_slot_event
-					WHERE captured_at >= ?
-					ORDER BY captured_at DESC, event_id`
+				query := `SELECT e.event_id, e.snapshot_id, e.story_id, e.event_type, e.from_slot, e.to_slot, e.captured_at,
+					COALESCE(s.title, ''), COALESCE(s.url, '')
+					FROM drudge_slot_event e
+					LEFT JOIN drudge_story s ON s.story_id = e.story_id AND s.snapshot_id = e.snapshot_id
+					WHERE e.captured_at >= ?
+					ORDER BY e.captured_at DESC, e.event_id`
 				if limit > 0 {
 					query += " LIMIT ?"
 					results, err = queryTailEvents(cmd, s.DB(), query, cutoff, limit)
@@ -68,10 +77,12 @@ func newTailCmd(flags *rootFlags) *cobra.Command {
 				if err == sql.ErrNoRows {
 					err = nil
 				} else if err == nil {
-					query := `SELECT event_id, snapshot_id, story_id, event_type, from_slot, to_slot, captured_at
-						FROM drudge_slot_event
-						WHERE snapshot_id = ?
-						ORDER BY event_type, captured_at`
+					query := `SELECT e.event_id, e.snapshot_id, e.story_id, e.event_type, e.from_slot, e.to_slot, e.captured_at,
+						COALESCE(s.title, ''), COALESCE(s.url, '')
+						FROM drudge_slot_event e
+						LEFT JOIN drudge_story s ON s.story_id = e.story_id AND s.snapshot_id = e.snapshot_id
+						WHERE e.snapshot_id = ?
+						ORDER BY e.event_type, e.captured_at`
 					if limit > 0 {
 						query += " LIMIT ?"
 						results, err = queryTailEvents(cmd, s.DB(), query, latestSnapshotID, limit)
@@ -103,6 +114,11 @@ func newTailCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// queryTailEvents scans slot events and their joined story title/url in one
+// query. The caller's query must select these columns in this exact order:
+// event_id, snapshot_id, story_id, event_type, from_slot, to_slot, captured_at, title, url.
+// PATCH(greptile-2026-05-21:tail-n-plus-one): previously the loop ran one
+// SELECT per event row to fetch title/url; the join eliminates that.
 func queryTailEvents(cmd *cobra.Command, db *sql.DB, query string, args ...any) ([]map[string]any, error) {
 	rows, err := db.QueryContext(cmd.Context(), query, args...)
 	if err != nil {
@@ -112,20 +128,10 @@ func queryTailEvents(cmd *cobra.Command, db *sql.DB, query string, args ...any) 
 
 	results := make([]map[string]any, 0)
 	for rows.Next() {
-		var eventID, snapshotID, storyID, eventType, capturedAt string
+		var eventID, snapshotID, storyID, eventType, capturedAt, title, url string
 		var fromSlot, toSlot sql.NullString
-		if err := rows.Scan(&eventID, &snapshotID, &storyID, &eventType, &fromSlot, &toSlot, &capturedAt); err != nil {
+		if err := rows.Scan(&eventID, &snapshotID, &storyID, &eventType, &fromSlot, &toSlot, &capturedAt, &title, &url); err != nil {
 			return nil, fmt.Errorf("scan slot event: %w", err)
-		}
-		title, url := "", ""
-		var latestSlot sql.NullString
-		var isRed sql.NullInt64
-		err := db.QueryRowContext(cmd.Context(),
-			`SELECT title, url, slot, is_red FROM drudge_story WHERE story_id = ? ORDER BY captured_at DESC LIMIT 1`,
-			storyID,
-		).Scan(&title, &url, &latestSlot, &isRed)
-		if err != nil && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("lookup story %s: %w", storyID, err)
 		}
 		results = append(results, map[string]any{
 			"event_type":  eventType,

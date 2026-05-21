@@ -3,5 +3,30 @@
   "applied_at": "2026-05-21",
   "base_run_id": "20260521-061607",
   "base_printing_press_version": "4.10.0",
-  "patches": []
+  "patches": [
+    {
+      "id": "greptile-2026-05-21-tenure-contiguous",
+      "summary": "Tenure commands now compute contiguous splash-run length instead of all-time MIN/MAX.",
+      "reason": "A story demoted from splash and later re-promoted previously reported gross MAX-MIN tenure, overstating duration. Both `tenure` and `tenure --history` now compute the active (or longest) contiguous splash run per story_id using a gap-and-island SQL pattern.",
+      "files": [
+        "internal/cli/tenure.go"
+      ]
+    },
+    {
+      "id": "greptile-2026-05-21-tail-n-plus-one",
+      "summary": "`tail` replaces per-row story lookup with a single JOIN.",
+      "reason": "Each slot_event row triggered a separate SELECT for title/url, becoming O(N) extra queries as snapshot history grew. Joining `drudge_slot_event` to `drudge_story` on (story_id, snapshot_id) returns the title/url at the time of the event in one query and is semantically more accurate than the previous \"most recent row\" lookup.",
+      "files": [
+        "internal/cli/tail.go"
+      ]
+    },
+    {
+      "id": "greptile-2026-05-21-on-date-exit-code",
+      "summary": "`on-date` returns exit 3 (not found) instead of exit 4 (auth) when the local store is empty.",
+      "reason": "Exit code 4 is the framework's auth-error code; using it for the missing-data case made shell scripts that branch on exit code conflate \"please sync\" with \"your credentials are bad.\" Exit 3 = not-found is conventional and accurate.",
+      "files": [
+        "internal/cli/on_date.go"
+      ]
+    }
+  ]
 }

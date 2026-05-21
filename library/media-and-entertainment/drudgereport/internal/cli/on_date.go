@@ -46,7 +46,14 @@ func newOnDateCmd(flags *rootFlags) *cobra.Command {
 
 			result, err := queryOnDate(cmd, s.DB(), requestedAt)
 			if err != nil {
-				if noData, ok := err.(*cliError); ok && noData.code == 4 {
+				// PATCH(greptile-2026-05-21:on-date-exit-code): "no
+				// snapshots in local store" used exit 4, which is the
+				// framework's auth-error code. That made scripts that
+				// branch on exit code conflate "I need to sync" with
+				// "your credentials are bad". Use exit 3 (not found)
+				// for the no-data case so the conventional meaning is
+				// preserved.
+				if noData, ok := err.(*cliError); ok && noData.code == 3 {
 					_ = emitDrudgeLocal(cmd.OutOrStdout(), flags, map[string]any{
 						"error":   "no_snapshots",
 						"message": "No Drudge snapshots exist in the local store. Run `drudgereport-pp-cli sync` or `drudgereport-pp-cli splash` first.",
@@ -100,7 +107,11 @@ func queryOnDate(cmd *cobra.Command, db *sql.DB, requestedAt time.Time) (map[str
 		requestedAt.Format(time.RFC3339Nano),
 	).Scan(&snapshotID, &snapshotCapturedAt)
 	if err == sql.ErrNoRows {
-		return nil, &cliError{code: 4, err: fmt.Errorf("no snapshots in local store")}
+		// PATCH(greptile-2026-05-21:on-date-exit-code): exit 3 = "not found"
+		// is the conventional code for missing data; the framework's exit 4
+		// is reserved for auth errors and using it here breaks scripts that
+		// branch on exit code.
+		return nil, &cliError{code: 3, err: fmt.Errorf("no snapshots in local store")}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query nearest snapshot: %w", err)
