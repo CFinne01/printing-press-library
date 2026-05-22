@@ -18,6 +18,7 @@ run "icloud-pp-cli doctor" if any command fails with a permission error.`,
 		"Path to chat.db (default: ~/Library/Messages/chat.db)")
 
 	messages.AddCommand(newMessagesListChatsCmd(f))
+	messages.AddCommand(newMessagesSearchCmd(f))
 
 	return messages
 }
