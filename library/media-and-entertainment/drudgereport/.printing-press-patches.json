@@ -51,6 +51,22 @@
       "files": [
         "internal/cli/digest.go"
       ]
+    },
+    {
+      "id": "greptile-2026-05-22-digest-top-domains-compile",
+      "summary": "Rebuilt queryDigestTopDomains: dropped the duplicate unfiltered query, added the missing err guard, defer rows.Close, results slice, and rows.Next/Scan loop.",
+      "reason": "An in-flight edit left two consecutive `rows, err := db.QueryContext(...)` declarations (the redeclare won't compile) and stripped the Scan loop, so the package did not build and the `digest` command was unreachable.",
+      "files": [
+        "internal/cli/digest.go"
+      ]
+    },
+    {
+      "id": "greptile-2026-05-22-slot-top-left-rank",
+      "summary": "SlotTopLeft base rank raised from 30 to 70 so the editorially-prominent top-left block sorts above column headlines.",
+      "reason": "Column headlines have a floor of 40, so a top-left rank of 30 guaranteed every column story sorted above the top-left block. 70 keeps clear separation: Splash (100) > TopLeft (70) > Columns (40-60).",
+      "files": [
+        "internal/drudge/types.go"
+      ]
     }
   ]
 }

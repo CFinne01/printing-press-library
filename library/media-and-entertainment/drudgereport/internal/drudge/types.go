@@ -81,7 +81,7 @@ func SlotRank(slot Slot, slotIndex int, isRed bool, hasImage bool) int {
 	case SlotSplash:
 		rank = 100
 	case SlotTopLeft:
-		rank = 30
+		rank = 70
 	case SlotColumn1, SlotColumn2:
 		rank = 60 - slotIndex
 		if rank < 40 {

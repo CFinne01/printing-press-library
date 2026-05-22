@@ -216,21 +216,24 @@ func queryDigestTopDomains(cmd *cobra.Command, db *sql.DB, startRaw, endRaw stri
 		`SELECT outbound_domain, COUNT(*)
 		 FROM drudge_story
 		 WHERE captured_at >= ? AND captured_at < ?
-		 GROUP BY outbound_domain
-		 ORDER BY COUNT(*) DESC
-		 LIMIT 5`,
-		startRaw, endRaw,
-	)
-	rows, err := db.QueryContext(cmd.Context(),
-		`SELECT outbound_domain, COUNT(*)
-		 FROM drudge_story
-		 WHERE captured_at >= ? AND captured_at < ?
 		   AND outbound_domain != ''
 		 GROUP BY outbound_domain
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
 		startRaw, endRaw,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("query top domains: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]map[string]any, 0)
+	for rows.Next() {
+		var domain string
+		var value int64
+		if err := rows.Scan(&domain, &value); err != nil {
+			return nil, fmt.Errorf("scan top domain: %w", err)
+		}
 		results = append(results, map[string]any{"outbound_domain": domain, "count": value})
 	}
 	if err := rows.Err(); err != nil {
