@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "applied_at": "2026-05-15",
+  "applied_at": "2026-05-22",
   "base_run_id": "20260512-165241",
   "base_printing_press_version": "4.5.1",
   "patches": [
@@ -191,6 +191,31 @@
         "internal/cli/threads_list_intersect_test.go"
       ],
       "validated_outcome": "go build + go vet + go test ./... pass (566/17). Existing intersect-with-stdin test updated to pass --type sent explicitly (it was depending on the silently-dropped default-draft behavior)."
+    },
+    {
+      "id": "drafts-send-and-get-by-id",
+      "summary": "Add 'drafts get <id>' and 'drafts send <id>' subcommands. The send subcommand fetches the current server-side draftValue via /v3/userdata.read and dispatches it via the existing Gmail-API path, so any edits a user makes in the Superhuman UI between draft creation and send are honored.",
+      "reason": "2026-05-22 Esper-to-Gradle send: an agent created a draft via 'drafts new', the user edited it in the Superhuman web UI, and the agent then called 'send' with the original body it had on file. 'send' built a brand-new draft from local --to/--subject/--body and dispatched THAT, silently discarding the UI edits. The CLI had no drafts get / drafts send verbs, no path to ship an existing draft by id. New subcommand mirrors the drafts discard shape (positional draft-id arg, hidden namespace, resolveActiveAccount/readDraft helpers, JSON envelope). Skips step1WriteMessage on purpose: re-writing risks racing with another active client (Superhuman web) that may have just persisted a fresh edit.",
+      "files": [
+        "internal/cli/drafts.go",
+        "internal/cli/drafts_get.go",
+        "internal/cli/drafts_get_test.go",
+        "internal/cli/drafts_send.go",
+        "internal/cli/drafts_send_test.go",
+        "internal/cli/userdata_read.go"
+      ],
+      "validated_outcome": "drafts_send_test.go TestDraftsSend_HonorsServerSideBody asserts the Gmail wire payload carries the server-side draft body bytes, not anything the caller composed. Round-trip: drafts new -> edit body in Superhuman web -> drafts send <id> ships the edited body."
+    },
+    {
+      "id": "rfc2047-subject-and-from-encoding",
+      "summary": "RFC 2047 B-encode non-ASCII Subject and From-display headers in the Gmail-API RFC822 builder. Adds mime.BEncoding.Encode + (&mail.Address{}).String() wrapping at both sendViaGmailAPI and sendGmailWithRefresh; ASCII-only headers stay unchanged.",
+      "reason": "2026-05-22 Esper-to-Gradle send: subject contained 'Pricing -> consumption' (U+2192). Recipients saw the two-round CP-1252 -> UTF-8 mojibake cascade 'Pricing C-tilde-2 Aacute-...' on the wire. Root cause was raw concatenation of UTF-8 bytes onto RFC 5322 header lines, which mandates 7-bit ASCII; downstream MTAs each apply heuristic charset decoding, producing the cascade. mime.BEncoding.Encode short-circuits to the raw string for pure ASCII (no test regressions); wraps non-ASCII as =?UTF-8?B?...?= encoded-words that round-trip cleanly through net/mail.ParseAddress and mime.WordDecoder.",
+      "files": [
+        "internal/cli/send.go",
+        "internal/cli/send_rfc2047_test.go"
+      ],
+      "validated_outcome": "send_rfc2047_test.go: TestEncodeRFC2047Subject_NoMojibakeSequence asserts the cascade fingerprint bytes are absent from the encoded output. TestGmailWirePayload_SubjectAndFromEncoded asserts the base64url-decoded RFC822 carries =?UTF-8?... for non-ASCII subject and 6 of 6 round-trip tests pass.",
+      "upstream_issue": "TODO: file generator follow-up on cli-printing-press to fix the same defect in every printed CLI's Gmail raw-body path"
     }
   ]
 }
