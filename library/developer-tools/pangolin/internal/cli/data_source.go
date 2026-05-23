@@ -219,6 +219,7 @@ func writeThroughCache(ctx context.Context, resourceType string, data json.RawMe
 					}
 				}
 			}
+			// PATCH(jsend-envelope-unwrap-data-source): nested-data envelope.
 			// Nested-data envelope: {success, data: {<plural>: [...], pagination: {...}}}.
 			// If the top-level "data" key is an object rather than an array, peek
 			// one level in and try the same key set plus the resource type's

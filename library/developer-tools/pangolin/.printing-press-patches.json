@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "applied_at": "2026-05-23",
+  "base_run_id": "20260522-221421",
+  "base_printing_press_version": "4.12.0",
+  "patches": [
+    {
+      "id": "jsend-envelope-unwrap-sync",
+      "summary": "Add Strategy 3 (nested-data envelope) to extractPageItems so JSend-style {success, data: {<plural>: [...]}} responses yield items.",
+      "reason": "Pangolin's list endpoints return a two-level envelope. The generator-emitted single-level extractor returned zero items, causing silent zero-row syncs. Upstream issue: mvanhorn/cli-printing-press#2013.",
+      "files": ["internal/cli/sync.go"]
+    },
+    {
+      "id": "jsend-envelope-unwrap-data-source",
+      "summary": "Add nested-data envelope unwrap to writeListResponseToStore so read-command upserts persist rows from JSend-style responses.",
+      "reason": "Mirrors the sync.go fix in the read-command upsert path. Without it, every `org sites get` / `org resources get` warned '1/N items skipped (no extractable ID field found)'. Upstream issue: mvanhorn/cli-printing-press#2013.",
+      "files": ["internal/cli/data_source.go"]
+    },
+    {
+      "id": "populate-resource-id-field-overrides",
+      "summary": "Populate resourceIDFieldOverrides with Pangolin's typed primary keys (siteId, resourceId, domainId, clientId, targetId, roleId, idpId, accessTokenId, certId).",
+      "reason": "Generator emits an empty map; Pangolin's resources use typed *Id PKs rather than the generic `id`. Without these entries, the store's typed upsert path can't resolve primary keys and falls back to skipping rows. Upstream issue: mvanhorn/cli-printing-press#2016.",
+      "files": ["internal/cli/sync.go", "internal/store/store.go"]
+    }
+  ]
+}

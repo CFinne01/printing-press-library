@@ -4423,6 +4423,7 @@ func (s *Store) UpsertRemoveRole(data json.RawMessage) error {
 // Includes both flat resources and dependent (parent-child) resources so a
 // child path-item annotated with x-resource-id resolves the same as a flat
 // path-item.
+// PATCH(populate-resource-id-field-overrides): Pangolin uses typed *Id PKs.
 var resourceIDFieldOverrides = map[string]string{
 	"sites":         "siteId",
 	"resources":     "resourceId",

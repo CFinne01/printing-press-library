@@ -828,6 +828,7 @@ func extractPageItems(data json.RawMessage, cursorParam string) ([]json.RawMessa
 		return arrayItems, nextCursor, hasMore
 	}
 
+	// PATCH(jsend-envelope-unwrap-sync): Strategy 3 nested-data envelope.
 	// Strategy 3: nested-data envelope. Some APIs (Pangolin, JSend-style)
 	// wrap the real payload under a "data" object: {success, data: {sites:
 	// [...], pagination: {...}}}. If the top-level wrapper-key probes all
@@ -1636,6 +1637,7 @@ func syncDependentResource(ctx context.Context, c interface {
 // Includes both flat resources and dependent (parent-child) resources so
 // annotations on a child path-item are honored at runtime, not just on
 // flat paths.
+// PATCH(populate-resource-id-field-overrides): Pangolin uses typed *Id PKs.
 var resourceIDFieldOverrides = map[string]string{
 	"sites":         "siteId",
 	"resources":     "resourceId",
