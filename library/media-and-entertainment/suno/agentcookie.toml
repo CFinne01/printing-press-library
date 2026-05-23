@@ -1,0 +1,16 @@
+# agentcookie.toml: secrets-bus adoption manifest v2
+# See docs/spec-agentcookie-secrets-bus-v2-adoption.md
+schema_version = 2
+name = "suno-pp-cli"
+display_name = "Suno"
+description = "Every Suno feature, plus a local SQLite library, offline FTS5 search, MCP-native agent surface, and a single-binary Go install."
+project_kind = "cli"
+
+[secrets.file]
+path = "~/.config/suno-pp-cli/config.toml"
+
+[sync]
+default = false
+
+[sync.keys]
+SUNO_TOKEN = true

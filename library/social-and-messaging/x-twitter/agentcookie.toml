@@ -1,0 +1,16 @@
+# agentcookie.toml: secrets-bus adoption manifest v2
+# See docs/spec-agentcookie-secrets-bus-v2-adoption.md
+schema_version = 2
+name = "x-twitter-pp-cli"
+display_name = "X (Twitter)"
+description = "X v2 API mirror with first-class Articles support — tweets, users, lists, spaces, bookmarks, likes via the official OpenAPI; long-form Articles authoring via browser-sniffed editor endpoints (GraphQL with rotating operation hashes)."
+project_kind = "cli"
+
+[secrets.file]
+path = "~/.config/x-twitter-pp-cli/config.toml"
+
+[sync]
+default = false
+
+[sync.keys]
+X_OAUTH2_USER_TOKEN = true
