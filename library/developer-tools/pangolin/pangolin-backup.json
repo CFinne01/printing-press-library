@@ -1,8 +1,0 @@
-{
-  "schema": "pangolin-pp-cli/backup",
-  "version": 1,
-  "generated_at": "2026-05-23T21:14:54Z",
-  "generated_by": "pangolin-pp-cli backup",
-  "resource_sets": {},
-  "counts": {}
-}
