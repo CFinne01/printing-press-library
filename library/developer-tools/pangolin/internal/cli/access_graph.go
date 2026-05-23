@@ -52,16 +52,35 @@ joined view. Run 'sync --full' first.`,
 			// We approximate the join from the raw resources table.
 			edges := []accessEdge{}
 
-			_ = orgID
+			// PATCH(access-graph-filter-warnings): make --user and --org filters
+			// honest. Pangolin's user_role mapping table is only populated when
+			// the API key has List Users + List Roles + List Allowed Role
+			// Resources. When the prerequisite data isn't synced, --user would
+			// silently return [] — warn instead of fabricating an answer.
+			userMapRows := 0
+			_ = db.DB().QueryRowContext(cmd.Context(),
+				`SELECT COUNT(*) FROM resources WHERE resource_type IN ('user_role', 'role_user')`).Scan(&userMapRows)
+			if userID != "" && userMapRows == 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(),
+					"warn: --user filter cannot be applied — no user-role mappings synced. "+
+						"Sync users + roles + role-resource bindings first.")
+			}
 
 			// Pangolin's role->resource binding lives in resource_role rows
 			// (each carries roleId + resourceId after sync via /resource/{id}/roles).
 			// When users aren't synced (org-scoped read-only key without List Users),
 			// we still emit role->resource edges so the user sees "which role unlocks what".
 
+			// Apply --org filter by restricting the resource lookup to that org's
+			// resources. Without this, --org was a no-op.
+			resQuery := `SELECT id, COALESCE(json_extract(data, '$.name'), id) FROM resources WHERE resource_type IN ('resource', 'resources')`
+			resQueryArgs := []any{}
+			if orgID != "" {
+				resQuery += ` AND (json_extract(data, '$.orgId') = ? OR json_extract(data, '$.orgName') = ?)`
+				resQueryArgs = append(resQueryArgs, orgID, orgID)
+			}
 			resNames := map[string]string{}
-			rnrows, _ := db.DB().QueryContext(cmd.Context(),
-				`SELECT id, COALESCE(json_extract(data, '$.name'), id) FROM resources WHERE resource_type IN ('resource', 'resources')`)
+			rnrows, _ := db.DB().QueryContext(cmd.Context(), resQuery, resQueryArgs...)
 			if rnrows != nil {
 				for rnrows.Next() {
 					var id, name sql.NullString
@@ -98,8 +117,18 @@ joined view. Run 'sync --full' first.`,
 					if resourceID != "" && resID.String != resourceID {
 						continue
 					}
+					// --org filter: skip resource_role rows whose resource isn't in
+					// our (already org-filtered) resNames map.
+					if orgID != "" {
+						if _, ok := resNames[resID.String]; !ok {
+							continue
+						}
+					}
 					if userID != "" {
-						continue // no user data synced; would fabricate
+						// Already warned above when there are no user-role mappings;
+						// here we'd need a join to user_role. Without that data we
+						// can't honor the filter, so skip to avoid fabricating.
+						continue
 					}
 					edges = append(edges, accessEdge{
 						RoleID:     rid.String,

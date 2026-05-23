@@ -45,6 +45,12 @@
       "summary": "Wire the --org flag into the audit SQL so resources whose data.orgId or data.orgName matches the filter actually narrow the scan.",
       "reason": "The flag was registered and stored in the report struct but the SQL query ignored it (`_ = orgFilter`), so passing --org appeared to work but had no effect on what was audited. Found by Greptile.",
       "files": ["internal/cli/audit.go"]
+    },
+    {
+      "id": "access-graph-filter-warnings",
+      "summary": "Wire --org into access-graph SQL and emit an actionable warning when --user is set but no user-role mappings are synced.",
+      "reason": "Both filters were registered but `_ = orgID` discarded one outright and the `--user` filter caused every row to `continue` (silently empty output) because the user-role join isn't populated for org-scoped read-only keys. Now: --org filters the resource lookup and downstream join; --user emits a stderr warning naming the sync prerequisite. Found by Greptile.",
+      "files": ["internal/cli/access_graph.go"]
     }
   ]
 }
