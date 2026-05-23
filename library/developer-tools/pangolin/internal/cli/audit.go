@@ -57,19 +57,22 @@ Run 'sync --full' before audit to make sure the local store is current.`,
 			report.Summary.ByKind = map[string]int{}
 			report.OrgFilter = orgFilter
 
-			// Pangolin resources are path-scoped (no orgId on the row), so the
-			// --org filter is informational here. Walk resources and check
-			// embedded data.targets length, health, and enabled flags — these
-			// are Pangolin's actual signals of "broken or stale".
-			_ = orgFilter
-
-			rows, err := db.DB().QueryContext(cmd.Context(),
-				`SELECT id,
+			// PATCH(audit-wire-org-filter): --org now restricts the SQL to rows
+			// whose embedded data.orgId or data.orgName matches the filter value.
+			// Walk resources and check embedded data.targets length, health, and
+			// enabled flags — Pangolin's actual signals of "broken or stale".
+			query := `SELECT id,
 				        COALESCE(json_extract(data, '$.name'), id),
 				        COALESCE(json_array_length(json_extract(data, '$.targets')), 0),
 				        COALESCE(json_extract(data, '$.enabled'), 1),
 				        COALESCE(json_extract(data, '$.health'), '')
-				 FROM resources WHERE resource_type IN ('resources', 'resource')`)
+				 FROM resources WHERE resource_type IN ('resources', 'resource')`
+			queryArgs := []any{}
+			if orgFilter != "" {
+				query += ` AND (json_extract(data, '$.orgId') = ? OR json_extract(data, '$.orgName') = ?)`
+				queryArgs = append(queryArgs, orgFilter, orgFilter)
+			}
+			rows, err := db.DB().QueryContext(cmd.Context(), query, queryArgs...)
 			if err == nil {
 				defer rows.Close()
 				for rows.Next() {
