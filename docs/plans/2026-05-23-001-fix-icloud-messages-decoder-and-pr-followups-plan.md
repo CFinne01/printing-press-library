@@ -1,8 +1,9 @@
 ---
 title: Fix iCloud Messages typedstream decoder + PR #766 review follow-ups
-status: active
+status: completed
 type: fix
 created: 2026-05-23
+completed: 2026-05-23
 plan_depth: standard
 target_repo: printing-press-library
 target_branch: feat/icloud-messages
