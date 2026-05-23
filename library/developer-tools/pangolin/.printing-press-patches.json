@@ -21,6 +21,18 @@
       "summary": "Populate resourceIDFieldOverrides with Pangolin's typed primary keys (siteId, resourceId, domainId, clientId, targetId, roleId, idpId, accessTokenId, certId).",
       "reason": "Generator emits an empty map; Pangolin's resources use typed *Id PKs rather than the generic `id`. Without these entries, the store's typed upsert path can't resolve primary keys and falls back to skipping rows. Upstream issue: mvanhorn/cli-printing-press#2016.",
       "files": ["internal/cli/sync.go", "internal/store/store.go"]
+    },
+    {
+      "id": "jsend-envelope-unwrap-expose",
+      "summary": "Teach extractIDField in expose.go to look one level into a JSend `data` envelope and to accept numeric IDs.",
+      "reason": "Pangolin returns `{success, data: {resourceId: 12, ...}}` from create-resource. The original extractIDField only checked top-level string fields, so the post-create target-attach and role-bind steps fired with an empty resourceId. Found by Greptile.",
+      "files": ["internal/cli/expose.go"]
+    },
+    {
+      "id": "expose-honor-step-method",
+      "summary": "Use step.Method when executing the expose plan instead of unconditionally POSTing.",
+      "reason": "The plan correctly encodes Method=PUT for the create-resource and attach-target steps (matching the spec), but the live-execution loop ignored Method and always called c.Post(). Found by Greptile.",
+      "files": ["internal/cli/expose.go"]
     }
   ]
 }

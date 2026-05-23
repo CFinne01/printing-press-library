@@ -6,21 +6,44 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 )
 
-// extractIDField pulls a top-level string field from a JSON response (e.g. "id"
-// or "resourceId"). Returns "" on any parse failure or missing field — callers
-// fall back to the next candidate.
+// extractIDField pulls a string or numeric ID field from a JSON response.
+// Looks at the top level first, then peeks one level into a "data" envelope
+// for JSend-style responses ({success, data: {resourceId: 12, ...}}).
+// Returns "" on any parse failure or missing field — callers fall back to
+// the next candidate.
 func extractIDField(raw []byte, names ...string) string {
 	var m map[string]any
 	if json.Unmarshal(raw, &m) != nil {
 		return ""
 	}
+	if id := lookupID(m, names); id != "" {
+		return id
+	}
+	// PATCH(jsend-envelope-unwrap-expose): peek into nested-data envelope.
+	for _, outer := range []string{"data", "Data", "result", "Result"} {
+		if inner, ok := m[outer].(map[string]any); ok {
+			if id := lookupID(inner, names); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func lookupID(m map[string]any, names []string) string {
 	for _, n := range names {
-		if v, ok := m[n].(string); ok && v != "" {
-			return v
+		switch v := m[n].(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case float64:
+			return strconv.FormatFloat(v, 'f', -1, 64)
 		}
 	}
 	return ""
@@ -142,7 +165,17 @@ an existing org context. Always start with --dry-run to inspect the plan.`,
 				if resourceID != "" {
 					path = replacePathParam(path, "resourceId", resourceID)
 				}
-				resp, _, perr := c.Post(cmd.Context(), path, step.Body)
+				// PATCH(expose-honor-step-method): use step.Method, not always POST.
+				var resp []byte
+				var perr error
+				switch step.Method {
+				case "PUT":
+					resp, _, perr = c.Put(cmd.Context(), path, step.Body)
+				case "POST", "":
+					resp, _, perr = c.Post(cmd.Context(), path, step.Body)
+				default:
+					perr = fmt.Errorf("unsupported step method %q", step.Method)
+				}
 				if perr != nil {
 					results = append(results, map[string]any{
 						"order": step.Order, "action": step.Action, "ok": false, "error": perr.Error(),
