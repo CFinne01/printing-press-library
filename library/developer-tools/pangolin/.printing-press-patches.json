@@ -51,6 +51,18 @@
       "summary": "Wire --org into access-graph SQL and emit an actionable warning when --user is set but no user-role mappings are synced.",
       "reason": "Both filters were registered but `_ = orgID` discarded one outright and the `--user` filter caused every row to `continue` (silently empty output) because the user-role join isn't populated for org-scoped read-only keys. Now: --org filters the resource lookup and downstream join; --user emits a stderr warning naming the sync prerequisite. Found by Greptile.",
       "files": ["internal/cli/access_graph.go"]
+    },
+    {
+      "id": "audit-org-empty-filter",
+      "summary": "Apply --org filter to the org_empty resource COUNT query and fallback org-listing query.",
+      "reason": "The org_empty block used a global COUNT(*) that ignored orgFilter. When --org=foo was passed and foo had no resources but other orgs did, resourceCount>0 so the empty-org block was never entered and foo was never flagged. Fix: pass orgFilter as a WHERE clause arg to both the count query and the org row-listing fallback. Found by Greptile.",
+      "files": ["internal/cli/audit.go"]
+    },
+    {
+      "id": "expose-org-required-with-site",
+      "summary": "Require --org when --site is provided; expose.go previously allowed --site alone, producing a literal '<orgId>' in the API path.",
+      "reason": "orgValueOr(orgID, \"<orgId>\") substitutes the placeholder string when orgID is empty. In dry-run mode this is informative, but in live mode it sends /org/<orgId>/site/<siteId>/resource to Pangolin. Fix: add a guard that returns a usage error when --site is given without --org. Found by Greptile.",
+      "files": ["internal/cli/expose.go"]
     }
   ]
 }

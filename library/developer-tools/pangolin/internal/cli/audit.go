@@ -136,12 +136,25 @@ Run 'sync --full' before audit to make sure the local store is current.`,
 			}
 
 			// Orgs with zero resources (resources table joined by COUNT)
+			// PATCH(audit-org-empty-filter): apply orgFilter to both the COUNT query
+			// and the fallback org-listing query so --org=foo only flags foo as empty
+			// when foo specifically has no resources, not when any other org does.
 			var resourceCount int
-			_ = db.DB().QueryRowContext(cmd.Context(),
-				`SELECT COUNT(*) FROM resources WHERE resource_type IN ('resources', 'resource')`).Scan(&resourceCount)
+			countQuery := `SELECT COUNT(*) FROM resources WHERE resource_type IN ('resources', 'resource')`
+			countArgs := []any{}
+			if orgFilter != "" {
+				countQuery += ` AND (json_extract(data, '$.orgId') = ? OR json_extract(data, '$.orgName') = ?)`
+				countArgs = append(countArgs, orgFilter, orgFilter)
+			}
+			_ = db.DB().QueryRowContext(cmd.Context(), countQuery, countArgs...).Scan(&resourceCount)
 			if resourceCount == 0 {
-				orgRows, oerr := db.DB().QueryContext(cmd.Context(),
-					`SELECT id, COALESCE(json_extract(data, '$.name'), id) FROM resources WHERE resource_type = 'orgs'`)
+				orgListQuery := `SELECT id, COALESCE(json_extract(data, '$.name'), id) FROM resources WHERE resource_type = 'orgs'`
+				orgListArgs := []any{}
+				if orgFilter != "" {
+					orgListQuery += ` AND (json_extract(data, '$.orgId') = ? OR id = ?)`
+					orgListArgs = append(orgListArgs, orgFilter, orgFilter)
+				}
+				orgRows, oerr := db.DB().QueryContext(cmd.Context(), orgListQuery, orgListArgs...)
 				if oerr == nil {
 					defer orgRows.Close()
 					for orgRows.Next() {

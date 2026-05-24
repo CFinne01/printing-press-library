@@ -91,6 +91,12 @@ an existing org context. Always start with --dry-run to inspect the plan.`,
 			if siteID == "" && orgID == "" {
 				return usageErr(fmt.Errorf("either --site or --org is required"))
 			}
+			// PATCH(expose-org-required-with-site): --org is required when --site is
+			// given because the API path is /org/{orgId}/site/{siteId}/resource.
+			// Without --org the path would contain the literal placeholder "<orgId>".
+			if siteID != "" && orgID == "" {
+				return usageErr(fmt.Errorf("--org is required when --site is provided (API path requires orgId)"))
+			}
 
 			plan := []exposeStep{}
 			order := 1
@@ -198,7 +204,7 @@ an existing org context. Always start with --dry-run to inspect the plan.`,
 	cmd.Flags().StringVar(&target, "target", "", "Upstream target host:port (e.g. 192.168.1.50:3000)")
 	cmd.Flags().StringVar(&siteID, "site", "", "Existing site ID to attach the resource to")
 	cmd.Flags().StringVar(&roleID, "role", "", "Existing role ID to bind to the new resource (optional)")
-	cmd.Flags().StringVar(&orgID, "org", "", "Org ID context (required if --site not given)")
+	cmd.Flags().StringVar(&orgID, "org", "", "Org ID context (required)")
 	cmd.Flags().StringVar(&niceID, "nice-id", "", "Override the niceId positional (subdomain shorthand)")
 	cmd.Flags().StringVar(&fullDomain, "domain", "", "Full domain (e.g. grafana.example.com)")
 	cmd.Flags().BoolVar(&ssl, "ssl", true, "Enable SSL on the new resource")
