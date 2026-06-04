@@ -112,9 +112,15 @@ Run 'sync --full' before audit to make sure the local store is current.`,
 			}
 
 			// Sites offline
-			srows, serr := db.DB().QueryContext(cmd.Context(),
-				`SELECT id, COALESCE(json_extract(data, '$.name'), id), COALESCE(json_extract(data, '$.online'), 1)
-				 FROM resources WHERE resource_type IN ('sites', 'site')`)
+			// PATCH(audit-site-offline-filter): apply orgFilter to match resource and org-empty checks.
+			siteQuery := `SELECT id, COALESCE(json_extract(data, '$.name'), id), COALESCE(json_extract(data, '$.online'), 1)
+				 FROM resources WHERE resource_type IN ('sites', 'site')`
+			siteArgs := []any{}
+			if orgFilter != "" {
+				siteQuery += ` AND (json_extract(data, '$.orgId') = ? OR json_extract(data, '$.orgName') = ?)`
+				siteArgs = append(siteArgs, orgFilter, orgFilter)
+			}
+			srows, serr := db.DB().QueryContext(cmd.Context(), siteQuery, siteArgs...)
 			if serr == nil {
 				defer srows.Close()
 				for srows.Next() {
