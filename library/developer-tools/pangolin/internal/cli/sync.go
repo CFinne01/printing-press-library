@@ -1331,7 +1331,6 @@ type dependentResourceDef struct {
 func dependentResourceDefs() []dependentResourceDef {
 	return []dependentResourceDef{
 		{Name: "alert_rules", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/alert-rules", KeyField: ""},
-		{Name: "api_key", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/api-key/{apiKeyId}/actions", KeyField: ""},
 		{Name: "api_keys", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/api-keys", KeyField: ""},
 		{Name: "blueprints", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/blueprints", KeyField: ""},
 		{Name: "event_streaming_destination", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/event-streaming-destination", KeyField: ""},
@@ -1344,7 +1343,6 @@ func dependentResourceDefs() []dependentResourceDef {
 		{Name: "org_domains", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/domains", KeyField: ""},
 		{Name: "org_idp", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/idp", KeyField: ""},
 		{Name: "org_roles", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/roles", KeyField: ""},
-		{Name: "org_site", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/site/{siteId}/resources", KeyField: ""},
 		{Name: "org_site_resources", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/site-resources", KeyField: ""},
 		{Name: "org_users", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/users", KeyField: ""},
 		{Name: "resources", ParentTable: "orgs", ParentIDParam: "orgId", PathTemplate: "/org/{orgId}/resources", KeyField: ""},

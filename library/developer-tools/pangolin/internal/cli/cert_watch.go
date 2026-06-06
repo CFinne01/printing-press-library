@@ -81,7 +81,11 @@ Run 'sync --full' first to make sure cert data is current.`,
 				if expires.String != "" {
 					if t, perr := time.Parse(time.RFC3339, expires.String); perr == nil {
 						row.DaysUntilExpiry = int(t.Sub(now).Hours() / 24)
+					} else {
+						row.DaysUntilExpiry = 1<<31 - 1
 					}
+				} else {
+					row.DaysUntilExpiry = 1<<31 - 1
 				}
 				if maxDays > 0 && row.DaysUntilExpiry > maxDays {
 					continue
