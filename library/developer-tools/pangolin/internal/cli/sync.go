@@ -1301,7 +1301,7 @@ func knownSyncResourceNames() []string {
 // this preserves the actual endpoint path like "/ISteamApps/GetAppList/v2".
 func syncResourcePath(resource string) (string, error) {
 	paths := map[string]string{
-		"domains":      "/domains/namepaces",
+		"domains":      "/domains/namespaces",
 		"idp":          "/idp",
 		"openapi-json": "/openapi.json",
 		"openapi-yaml": "/openapi.yaml",

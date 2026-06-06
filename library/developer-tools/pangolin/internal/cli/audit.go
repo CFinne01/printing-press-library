@@ -109,6 +109,7 @@ Run 'sync --full' before audit to make sure the local store is current.`,
 						})
 					}
 				}
+				_ = rows.Err()
 			}
 
 			// Sites offline
@@ -139,6 +140,7 @@ Run 'sync --full' before audit to make sure the local store is current.`,
 						})
 					}
 				}
+				_ = srows.Err()
 			}
 
 			// Orgs with zero resources (resources table joined by COUNT)

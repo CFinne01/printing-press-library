@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -170,6 +171,12 @@ an existing org context. Always start with --dry-run to inspect the plan.`,
 				path := step.Path
 				if resourceID != "" {
 					path = replacePathParam(path, "resourceId", resourceID)
+				}
+				// PATCH(expose-resourceid-guard): if path still contains the literal
+				// {resourceId} placeholder, step 1 did not return a parseable ID —
+				// fail early with a clear message rather than sending a malformed URL.
+				if strings.Contains(path, "{resourceId}") {
+					return fmt.Errorf("expose: step %d (%s) requires {resourceId} but resource ID was not captured from step 1; use --dry-run to inspect the plan", step.Order, step.Action)
 				}
 				// PATCH(expose-honor-step-method): use step.Method, not always POST.
 				var resp []byte

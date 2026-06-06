@@ -88,6 +88,7 @@ Run 'sync --full' first to make sure cert data is current.`,
 				}
 				out = append(out, row)
 			}
+			_ = rows.Err()
 
 			sort.Slice(out, func(i, j int) bool { return out[i].DaysUntilExpiry < out[j].DaysUntilExpiry })
 

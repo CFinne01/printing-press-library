@@ -66,6 +66,27 @@ joined view. Run 'sync --full' first.`,
 						"Sync users + roles + role-resource bindings first.")
 			}
 
+			// PATCH(access-graph-user-role-join): build the set of role IDs the
+			// requested user holds, so --user can filter edges to only their roles.
+			userRoles := map[string]bool{}
+			if userID != "" && userMapRows > 0 {
+				urrows, _ := db.DB().QueryContext(cmd.Context(),
+					`SELECT COALESCE(json_extract(data, '$.roleId'), '')
+					 FROM resources WHERE resource_type IN ('user_role', 'role_user')
+					 AND (json_extract(data, '$.userId') = ? OR json_extract(data, '$.userEmail') = ?)`,
+					userID, userID)
+				if urrows != nil {
+					for urrows.Next() {
+						var roleID sql.NullString
+						if urrows.Scan(&roleID) == nil && roleID.String != "" {
+							userRoles[roleID.String] = true
+						}
+					}
+					_ = urrows.Err()
+					urrows.Close()
+				}
+			}
+
 			// Pangolin's role->resource binding lives in resource_role rows
 			// (each carries roleId + resourceId after sync via /resource/{id}/roles).
 			// When users aren't synced (org-scoped read-only key without List Users),
@@ -125,10 +146,14 @@ joined view. Run 'sync --full' first.`,
 						}
 					}
 					if userID != "" {
-						// Already warned above when there are no user-role mappings;
-						// here we'd need a join to user_role. Without that data we
-						// can't honor the filter, so skip to avoid fabricating.
-						continue
+						if userMapRows == 0 {
+							// No mapping data synced — already warned; skip all edges.
+							continue
+						}
+						// Filter to only roles the requested user holds.
+						if !userRoles[rid.String] {
+							continue
+						}
 					}
 					edges = append(edges, accessEdge{
 						RoleID:     rid.String,
@@ -137,6 +162,7 @@ joined view. Run 'sync --full' first.`,
 						Resource:   resNames[resID.String],
 					})
 				}
+				_ = rrrows.Err()
 				rrrows.Close()
 			}
 
