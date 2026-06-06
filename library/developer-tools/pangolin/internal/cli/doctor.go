@@ -165,7 +165,7 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 				if header == "" {
 					report["auth"] = "not configured"
 					report["auth_hint"] = "export PANGOLIN_TOKEN=<your-key>"
-					report["auth_key_url"] = "https://<your-dashboard"
+					report["auth_key_url"] = "https://<your-pangolin-host>/app/settings/access-tokens"
 				} else {
 					authConfigured = true
 					report["auth"] = "configured"

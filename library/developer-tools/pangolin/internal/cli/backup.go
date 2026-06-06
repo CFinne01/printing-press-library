@@ -79,6 +79,7 @@ enough to commit to git and diff between dates for change tracking.`,
 						items = append(items, json.RawMessage(data.String))
 					}
 				}
+				_ = rows.Err()
 				rows.Close()
 				if len(items) > 0 {
 					snap.ResourceSets[rt] = items

@@ -171,8 +171,8 @@ joined view. Run 'sync --full' first.`,
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Access graph: %d edges\n", len(edges))
 			for _, e := range edges {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s (%s) -> %s -> %s [%s]\n",
-					e.UserEmail, e.UserID, e.RoleName, e.Resource, e.OrgID)
+				fmt.Fprintf(cmd.OutOrStdout(), "  role:%s -> resource:%s\n",
+					e.RoleName, e.Resource)
 			}
 			return nil
 		},

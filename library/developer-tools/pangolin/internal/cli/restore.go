@@ -130,7 +130,8 @@ record and continue with the rest.`,
 				items := snap.ResourceSets[rt]
 				for _, item := range items {
 					var body any
-					if json.Unmarshal(item, &body) != nil {
+					if uerr := json.Unmarshal(item, &body); uerr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warn: skipping corrupt record in %s: %v\n", rt, uerr)
 						errored++
 						continue
 					}
