@@ -31,7 +31,7 @@ var backupResourceTypes = []string{
 	"sites", "resources", "site_resources",
 	"target", "client", "role", "certificate", "domains",
 	"org_users", "org_roles", "org_idp", "org_domains",
-	"access_tokens", "openapi-json", "openapi-yaml",
+	"org_access_tokens", "openapi-json", "openapi-yaml",
 }
 
 func newBackupCmd(flags *rootFlags) *cobra.Command {
@@ -79,7 +79,9 @@ enough to commit to git and diff between dates for change tracking.`,
 						items = append(items, json.RawMessage(data.String))
 					}
 				}
-				_ = rows.Err()
+				if rerr := rows.Err(); rerr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warn: cursor error reading %s: %v\n", rt, rerr)
+				}
 				rows.Close()
 				if len(items) > 0 {
 					snap.ResourceSets[rt] = items

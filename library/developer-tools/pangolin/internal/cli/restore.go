@@ -48,15 +48,17 @@ func restorePathFor(rt string) (string, string) {
 func newRestoreCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restore [backup.json]",
-		Short: "Re-apply a backup against a fresh Pangolin install in dependency order.",
-		Long: `restore reads a backup file produced by 'backup' and POSTs each record back
-to the live Pangolin host in correct dependency order (orgs first, then sites,
-then resources, then bindings).
+		Short: "Re-apply top-level org and IdP records from a backup (other types require parent context and are skipped).",
+		Long: `restore reads a backup file produced by 'backup' and POSTs records back to
+the live Pangolin host. Currently only top-level resource types with static
+API paths execute (orgs, idp). Types that require a parent ID in the path
+(sites, resources, targets, and bindings) are skipped with a warning because
+the restore command does not yet resolve those placeholders automatically.
 
-Always run with --dry-run first to preview the apply plan. The command does
-NOT delete existing records — it only creates the entries listed in the file.
-A real restore against a non-empty host will surface duplicate-ID errors per
-record and continue with the rest.`,
+Always run with --dry-run first to preview which types will execute and which
+will be skipped. The command does NOT delete existing records — it only creates
+the entries listed in the file. A real restore against a non-empty host will
+surface duplicate-ID errors per record and continue with the rest.`,
 		Example: "  pangolin-pp-cli restore pangolin-backup.json --dry-run",
 		Annotations: map[string]string{
 			"pp:typed-exit-codes": "0,4",
