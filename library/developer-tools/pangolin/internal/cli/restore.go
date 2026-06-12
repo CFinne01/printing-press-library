@@ -95,6 +95,7 @@ surface duplicate-ID errors per record and continue with the rest.`,
 					"method":        method,
 					"post_path":     postPath,
 					"records":       len(items),
+					"will_execute":  !strings.Contains(postPath, "{"),
 				})
 			}
 

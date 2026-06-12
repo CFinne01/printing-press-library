@@ -70,6 +70,7 @@ enough to commit to git and diff between dates for change tracking.`,
 				rows, qerr := db.DB().QueryContext(cmd.Context(),
 					`SELECT data FROM resources WHERE resource_type = ?`, rt)
 				if qerr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warn: skipping %s: query failed: %v\n", rt, qerr)
 					continue
 				}
 				items := []json.RawMessage{}
